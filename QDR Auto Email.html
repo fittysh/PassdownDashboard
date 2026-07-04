@@ -1,0 +1,3027 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Post E | QDR Passdown Dashboard</title>
+  <link href="assets/fonts/source-sans-3.css" rel="stylesheet">
+  <script src="assets/js/chart.umd.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Source Sans 3', 'Segoe UI', 'Arial', 'sans-serif']
+          },
+          colors: {
+            ink: '#0f172a',
+            mist: '#f7fbff',
+            blueglass: '#eaf5ff',
+            ocean: '#1769aa',
+            aqua: '#38bdf8'
+          },
+          boxShadow: {
+            glass: '0 24px 80px rgba(31, 95, 155, 0.14)',
+            soft: '0 12px 34px rgba(36, 99, 160, 0.12)'
+          }
+        }
+      }
+    }
+  </script>
+  <script src="assets/js/tailwindcss.com.js"></script>
+  <style>
+    :root {
+      --dashboard-font: "Source Sans 3", "Segoe UI", Arial, sans-serif;
+      font-family: var(--dashboard-font);
+      color: #0f172a;
+      background: #f7fbff;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
+    }
+
+    html,
+    body,
+    button,
+    input,
+    select,
+    textarea {
+      font-family: var(--dashboard-font) !important;
+    }
+
+    body {
+      min-height: 100vh;
+      overflow-x: hidden;
+      background:
+        radial-gradient(circle at 12% 14%, rgba(88, 166, 255, .22), transparent 30%),
+        radial-gradient(circle at 84% 10%, rgba(186, 230, 253, .58), transparent 26%),
+        linear-gradient(135deg, #fafdff 0%, #eef8ff 48%, #f8fbff 100%);
+    }
+
+    .shell {
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+      backdrop-filter: none;
+    }
+
+    .overview-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(380px, .85fr);
+      grid-template-areas:
+        "hero throughput"
+        "incoming throughput";
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .overview-hero {
+      grid-area: hero;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      align-self: start;
+      height: auto;
+      overflow: hidden;
+    }
+    .overview-throughput {
+      grid-area: throughput;
+      min-height: 0;
+    }
+
+    .overview-throughput canvas {
+      min-height: 0;
+    }
+
+    .overview-incoming {
+      grid-area: incoming;
+      align-self: start;
+    }
+
+    .incoming-chart-shell {
+      height: 170px;
+      max-width: 100%;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .trend-chart-shell {
+      height: 210px;
+      position: relative;
+    }
+
+    .history-list {
+      max-height: 210px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .history-row {
+      border: 1px solid rgba(255,255,255,.78);
+      background: rgba(255,255,255,.62);
+      box-shadow: 0 10px 24px rgba(31, 95, 155, .08);
+    }
+
+    .trend-panel {
+      transition: padding .22s ease, opacity .22s ease;
+    }
+
+    .trend-body {
+      overflow: hidden;
+      transition: max-height .32s cubic-bezier(.2,.8,.2,1), opacity .22s ease, margin-top .22s ease;
+      max-height: 520px;
+      opacity: 1;
+    }
+
+    .trend-summary-strip {
+      display: none;
+    }
+
+    #trends.is-minimized .trend-body {
+      max-height: 0;
+      opacity: 0;
+      margin-top: 0 !important;
+      pointer-events: none;
+    }
+
+    #trends.is-minimized .trend-summary-strip {
+      display: grid;
+    }
+
+    .glass {
+      background: rgba(255, 255, 255, .72);
+      border: 1px solid rgba(255, 255, 255, .84);
+      box-shadow: 0 18px 48px rgba(32, 99, 166, .10);
+      backdrop-filter: blur(18px);
+    }
+
+    .metric-meter {
+      position: relative;
+      z-index: 1;
+      height: 5px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(186, 230, 253, .68);
+    }
+
+    .metric-meter span {
+      display: block;
+      height: 100%;
+      width: var(--meter, 0%);
+      border-radius: inherit;
+      background: linear-gradient(90deg, #38bdf8, #1769aa);
+      transform-origin: left;
+      animation: meterGrow .9s cubic-bezier(.2,.8,.2,1) both;
+    }
+
+    .digit-counter {
+      display: inline-flex;
+      align-items: flex-end;
+      gap: .02em;
+      height: 1.08em;
+      overflow: hidden;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      vertical-align: bottom;
+    }
+
+    .digit-window {
+      display: inline-block;
+      width: .62em;
+      height: 1.08em;
+      overflow: hidden;
+    }
+
+    .digit-strip {
+      display: flex;
+      flex-direction: column;
+      transform: translateY(calc(var(--digit, 0) * -1.08em));
+      transition: transform 1.05s cubic-bezier(.16, 1, .3, 1);
+      transition-delay: var(--delay, 0ms);
+      will-change: transform;
+    }
+
+    .digit-strip span {
+      display: block;
+      height: 1.08em;
+      line-height: 1.08em;
+    }
+
+    .digit-counter.roll-pop {
+      animation: numberSettle .52s cubic-bezier(.2,.8,.2,1);
+    }
+
+    .blue-card .metric-meter {
+      background: rgba(255,255,255,.28);
+    }
+
+    .blue-card .metric-meter span {
+      background: linear-gradient(90deg, #fff, #bae6fd);
+    }
+
+    .kpi-grid {
+      align-items: stretch;
+      grid-auto-rows: 1fr;
+    }
+
+    .kpi-card {
+      min-height: 82px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+    }
+
+    .glass-strong {
+      background: linear-gradient(145deg, rgba(255,255,255,.86), rgba(239,248,255,.72));
+      border: 1px solid rgba(255,255,255,.92);
+      box-shadow: 0 20px 60px rgba(28, 100, 170, .14);
+      backdrop-filter: blur(18px);
+    }
+
+    .blue-card {
+      background: linear-gradient(145deg, #1c78bf, #53bdf6);
+      color: white;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .blue-card::after {
+      content: "";
+      position: absolute;
+      inset: -40% -25% auto auto;
+      width: 220px;
+      height: 220px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.24);
+      filter: blur(2px);
+    }
+
+    .nav-item {
+      position: relative;
+      transition: .25s ease;
+    }
+
+    .nav-item.active,
+    .nav-item:hover {
+      background: rgba(219, 239, 255, .82);
+      color: #075985;
+    }
+
+    .nav-item.active::before {
+      content: "";
+      position: absolute;
+      left: -18px;
+      top: 10px;
+      bottom: 10px;
+      width: 5px;
+      border-radius: 999px;
+      background: linear-gradient(#38bdf8, #1769aa);
+    }
+
+    .metric-card,
+    .interactive-row,
+    .issue-card {
+      transition: transform .24s ease, box-shadow .24s ease, border-color .24s ease;
+    }
+
+    .metric-card {
+      position: relative;
+      isolation: isolate;
+    }
+
+    .metric-card::before {
+      content: "";
+      position: absolute;
+      inset: -35% auto -35% -45%;
+      z-index: 2;
+      width: 42%;
+      transform: translateX(-140%) skewX(-18deg);
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.62), transparent);
+      opacity: 0;
+      pointer-events: none;
+      animation: kpiGlance 4.8s cubic-bezier(.16, 1, .3, 1) infinite;
+    }
+
+    .metric-card:nth-child(2)::before { animation-delay: .45s; }
+    .metric-card:nth-child(3)::before { animation-delay: .9s; }
+    .metric-card:nth-child(4)::before { animation-delay: 1.35s; }
+
+    .metric-card:hover,
+    .issue-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 24px 60px rgba(27, 111, 183, .17);
+      border-color: rgba(56, 189, 248, .55);
+    }
+
+    .interactive-row:hover {
+      transform: translateX(4px);
+      background: rgba(239, 248, 255, .82);
+    }
+
+    .floaty {
+      animation: floaty 5s ease-in-out infinite;
+    }
+
+    .fade-up {
+      opacity: 0;
+      transform: translateY(18px);
+      animation: fadeUp .72s cubic-bezier(.2,.8,.2,1) forwards;
+    }
+
+    .pulse-ring {
+      box-shadow: 0 0 0 0 rgba(56, 189, 248, .32);
+      animation: pulseRing 2.3s infinite;
+    }
+
+    .tab.active {
+      background: #0b6fad;
+      color: white;
+      box-shadow: 0 12px 28px rgba(14, 116, 177, .22);
+    }
+
+    .line-clamp-2 {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .field {
+      width: 100%;
+      border: 1px solid rgba(186, 230, 253, .78);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, .74);
+      padding: 12px 14px;
+      color: #0f172a;
+      font-size: .875rem;
+      font-weight: 600;
+      outline: none;
+      transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
+    }
+
+    .field:focus {
+      border-color: rgba(14, 165, 233, .86);
+      background: rgba(255, 255, 255, .95);
+      box-shadow: 0 0 0 4px rgba(56, 189, 248, .16);
+    }
+
+    .field-label {
+      margin-bottom: 7px;
+      display: block;
+      font-size: .72rem;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+
+    .action-pill {
+      border-radius: 999px;
+      padding: 11px 16px;
+      font-size: .875rem;
+      font-weight: 800;
+      transition: transform .2s ease, background .2s ease, box-shadow .2s ease;
+    }
+
+    .action-pill:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 28px rgba(14, 116, 177, .18);
+    }
+
+    .app-nav {
+      position: sticky;
+      top: 12px;
+      z-index: 40;
+      overflow: hidden;
+      border-radius: 30px;
+      border: 1px solid rgba(255, 255, 255, .78);
+      background:
+        linear-gradient(135deg, rgba(255,255,255,.78), rgba(235,247,255,.52)),
+        rgba(255,255,255,.52);
+      box-shadow:
+        0 22px 60px rgba(33, 100, 166, .15),
+        inset 0 1px 0 rgba(255,255,255,.88),
+        inset 0 -1px 0 rgba(140, 198, 240, .12);
+      backdrop-filter: blur(28px) saturate(1.22);
+      transform-origin: top center;
+      transition:
+        top .34s cubic-bezier(.2,.8,.2,1),
+        padding .34s cubic-bezier(.2,.8,.2,1),
+        border-radius .34s cubic-bezier(.2,.8,.2,1),
+        box-shadow .34s cubic-bezier(.2,.8,.2,1),
+        background .34s cubic-bezier(.2,.8,.2,1),
+        transform .34s cubic-bezier(.2,.8,.2,1);
+    }
+
+    .app-nav::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 12% 12%, rgba(255,255,255,.92), transparent 28%),
+        radial-gradient(circle at 82% 28%, rgba(186,230,253,.36), transparent 30%);
+      opacity: .62;
+    }
+
+    .app-nav > * {
+      position: relative;
+      z-index: 2;
+    }
+
+    .nav-layout {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 68px;
+      transition: min-height .34s cubic-bezier(.2,.8,.2,1), gap .34s cubic-bezier(.2,.8,.2,1);
+    }
+
+    .nav-brand {
+      flex: 0 0 auto;
+      min-width: 206px;
+      transition: min-width .34s cubic-bezier(.2,.8,.2,1);
+    }
+
+    .nav-brand-icon {
+      position: relative;
+      overflow: hidden;
+      border-radius: 16px;
+      background: transparent;
+      box-shadow: none;
+      width: 96px;
+      height: 42px;
+      transition:
+        width .34s cubic-bezier(.2,.8,.2,1),
+        height .34s cubic-bezier(.2,.8,.2,1),
+        border-radius .34s cubic-bezier(.2,.8,.2,1),
+        box-shadow .34s cubic-bezier(.2,.8,.2,1);
+    }
+
+    .nav-brand-icon::after {
+      content: none;
+    }
+
+    .micron-logo {
+      position: relative;
+      z-index: 1;
+      width: 82px;
+      max-width: 82%;
+      height: auto;
+      object-fit: contain;
+      filter: none;
+    }
+
+    .nav-brand-copy {
+      min-width: 0;
+    }
+
+    .nav-tabs {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px;
+      border: 1px solid rgba(255,255,255,.76);
+      border-radius: 999px;
+      background: rgba(255,255,255,.42);
+      box-shadow:
+        inset 0 1px 1px rgba(255,255,255,.8),
+        0 10px 26px rgba(30, 111, 180, .08);
+      backdrop-filter: blur(18px);
+      transition: padding .34s cubic-bezier(.2,.8,.2,1), box-shadow .34s cubic-bezier(.2,.8,.2,1);
+    }
+
+    .top-nav-link {
+      position: relative;
+      overflow: hidden;
+      color: #62738f;
+      font-size: .8rem;
+      font-weight: 760;
+      line-height: 1;
+      padding: 9px 11px;
+      border-radius: 999px;
+      transition: color .2s ease, background .22s ease, box-shadow .22s ease;
+      white-space: nowrap;
+    }
+
+    .top-nav-link:hover,
+    .top-nav-link.active {
+      color: #0f172a;
+      background: rgba(255,255,255,.76);
+      box-shadow: 0 10px 22px rgba(30, 111, 180, .10);
+    }
+
+    .top-nav-link.active::after {
+      content: none;
+    }
+
+    .top-nav-link::before {
+      content: "";
+      position: absolute;
+      left: var(--ripple-x, 50%);
+      top: var(--ripple-y, 50%);
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(14, 116, 217, .24), rgba(14, 116, 217, 0) 70%);
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, -50%) scale(.4);
+    }
+
+    .top-nav-link.nav-ripple::before {
+      animation: navRipple .62s cubic-bezier(.2,.8,.2,1);
+    }
+
+    .nav-search {
+      flex: 1 1 240px;
+      min-width: 240px;
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.72);
+      border-radius: 999px;
+      background:
+        linear-gradient(135deg, rgba(255,255,255,.55), rgba(255,255,255,.24)),
+        rgba(226, 240, 250, .38);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.92),
+        inset 0 -1px 0 rgba(15,23,42,.06),
+        0 16px 38px rgba(24, 96, 156, .12);
+      backdrop-filter: blur(24px) saturate(1.18);
+      transition:
+        min-height .34s cubic-bezier(.2,.8,.2,1),
+        flex-basis .34s cubic-bezier(.2,.8,.2,1),
+        box-shadow .22s ease,
+        border-color .22s ease;
+    }
+
+    .nav-actions {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+      white-space: nowrap;
+      position: relative;
+      z-index: 3;
+    }
+
+    .search-status {
+      flex: 0 0 auto;
+      max-width: 118px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      border-radius: 999px;
+      background: rgba(224, 242, 254, .74);
+      padding: 6px 10px;
+      color: #0369a1;
+      font-size: .68rem;
+      font-weight: 800;
+      opacity: 0;
+      transform: scale(.96);
+      transition: opacity .2s ease, transform .2s ease;
+    }
+
+    .search-status.visible {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .nav-search:focus-within {
+      border-color: rgba(14, 165, 233, .38);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.94),
+        0 0 0 5px rgba(56, 189, 248, .13),
+        0 18px 42px rgba(24, 96, 156, .16);
+    }
+
+    .nav-search::after {
+      content: "";
+      position: absolute;
+      inset: 8px 54px 8px auto;
+      width: 1px;
+      background: rgba(148, 163, 184, .22);
+    }
+
+    .search-submit {
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.68);
+      color: #0f172a;
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.92),
+        0 8px 20px rgba(15, 23, 42, .08);
+      transition:
+        width .34s cubic-bezier(.2,.8,.2,1),
+        height .34s cubic-bezier(.2,.8,.2,1),
+        transform .2s ease,
+        background .2s ease;
+    }
+
+    .search-submit:hover {
+      transform: translateY(-1px);
+      background: rgba(255,255,255,.92);
+    }
+
+    .search-target-focus {
+      animation: searchTargetGlow 1.5s ease-out;
+      outline: 2px solid rgba(14, 165, 233, .34);
+      outline-offset: 4px;
+    }
+
+    body.nav-compact .app-nav {
+      top: 6px;
+      border-radius: 999px;
+      padding: 7px 12px !important;
+      background:
+        linear-gradient(135deg, rgba(255,255,255,.86), rgba(232,246,255,.62)),
+        rgba(255,255,255,.58);
+      box-shadow:
+        0 12px 36px rgba(33, 100, 166, .16),
+        inset 0 1px 0 rgba(255,255,255,.92),
+        inset 0 -1px 0 rgba(140, 198, 240, .12);
+      transform: translateY(-2px) scale(.992);
+    }
+
+    body.nav-compact .nav-layout {
+      min-height: 48px;
+      gap: 8px;
+    }
+
+    body.nav-compact .nav-brand {
+      min-width: 168px;
+    }
+
+    body.nav-compact .nav-brand-icon {
+      width: 76px;
+      height: 34px;
+      border-radius: 13px;
+      box-shadow: none;
+    }
+
+    body.nav-compact .micron-logo {
+      width: 66px;
+    }
+
+    body.nav-compact .nav-brand p:first-child {
+      font-size: .92rem;
+    }
+
+    body.nav-compact .nav-brand p:last-child {
+      margin-top: 0;
+      font-size: .66rem;
+    }
+
+    body.nav-compact .nav-tabs {
+      padding: 3px;
+      box-shadow:
+        inset 0 1px 1px rgba(255,255,255,.84),
+        0 8px 18px rgba(30, 111, 180, .07);
+    }
+
+    body.nav-compact .top-nav-link {
+      padding: 7px 10px;
+      font-size: .74rem;
+    }
+
+    body.nav-compact .nav-search {
+      min-height: 40px;
+      flex-basis: 210px;
+      min-width: 210px;
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.92),
+        inset 0 -1px 0 rgba(15,23,42,.05),
+        0 10px 24px rgba(24, 96, 156, .10);
+    }
+
+    body.nav-compact .search-submit {
+      width: 34px;
+      height: 34px;
+    }
+
+    body.nav-compact .search-status {
+      display: none;
+    }
+
+    .export-shell {
+      position: relative;
+      flex: 0 0 auto;
+    }
+
+    .export-btn {
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(16, 185, 129, .30);
+      background: linear-gradient(135deg, #16834f, #22c55e);
+      color: #fff;
+      width: 198px;
+      min-height: 48px;
+      padding: 7px 8px 7px 10px;
+      font-size: .74rem;
+      font-weight: 900;
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.24),
+        0 12px 28px rgba(22, 163, 74, .20);
+      transition: transform .2s ease, width .42s cubic-bezier(.2,.8,.2,1), filter .2s ease, box-shadow .2s ease;
+    }
+
+    .export-btn:hover,
+    .export-btn:focus-visible,
+    .export-shell.open .export-btn {
+      width: 218px;
+      transform: translateY(-1px);
+      filter: saturate(1.12);
+      box-shadow: 0 16px 34px rgba(22, 163, 74, .28);
+    }
+
+    .export-btn::before {
+      content: "";
+      position: absolute;
+      inset: 2px;
+      border-radius: inherit;
+      background:
+        radial-gradient(circle at 18% 15%, rgba(255,255,255,.35), transparent 26%),
+        linear-gradient(135deg, rgba(255,255,255,.13), transparent 52%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .export-btn::after {
+      content: "";
+      position: absolute;
+      inset: -45% auto -45% -38%;
+      width: 30%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.76), transparent);
+      transform: translateX(-140%) skewX(-18deg);
+      animation: outlookGlance 3s ease-in-out infinite;
+      z-index: 0;
+    }
+
+    .excel-logo {
+      position: relative;
+      z-index: 2;
+      width: 28px;
+      height: 28px;
+      flex: 0 0 auto;
+      background: transparent;
+      transition: transform .42s cubic-bezier(.2,.8,.2,1);
+    }
+
+    .excel-logo::before {
+      content: "X";
+      position: absolute;
+      left: 0;
+      top: 6px;
+      width: 17px;
+      height: 17px;
+      display: grid;
+      place-items: center;
+      border-radius: 5px;
+      background: linear-gradient(145deg, #107c41, #16a34a);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 950;
+      box-shadow:
+        3px 4px 9px rgba(4, 80, 39, .30),
+        inset 0 1px 0 rgba(255,255,255,.28);
+      z-index: 2;
+    }
+
+    .excel-logo::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      top: 4px;
+      width: 20px;
+      height: 20px;
+      border-radius: 3px;
+      background:
+        linear-gradient(90deg, transparent 48%, rgba(255,255,255,.34) 49% 51%, transparent 52%),
+        linear-gradient(#35d487 0 50%, #12884e 50% 100%);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.20);
+    }
+
+    .export-copy {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      align-items: center;
+      height: 30px;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-align: left;
+      line-height: 1.05;
+    }
+
+    .export-copy span {
+      grid-area: 1 / 1;
+      display: block;
+      white-space: nowrap;
+      font-size: .72rem;
+      letter-spacing: -.01em;
+      text-shadow: 0 1px 8px rgba(4, 80, 39, .16);
+      transition: opacity .42s cubic-bezier(.2,.8,.2,1), transform .42s cubic-bezier(.2,.8,.2,1), filter .42s ease;
+    }
+
+    .export-question {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+
+    .export-action {
+      opacity: 0;
+      transform: translateY(18px) scale(.96);
+      filter: blur(6px);
+    }
+
+    .export-btn:hover .export-question,
+    .export-btn:focus-visible .export-question,
+    .export-shell.open .export-question {
+      opacity: 0;
+      transform: translateY(-18px) scale(.96);
+      filter: blur(6px);
+    }
+
+    .export-btn:hover .export-action,
+    .export-btn:focus-visible .export-action,
+    .export-shell.open .export-action {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+
+    .export-btn:hover .excel-logo,
+    .export-btn:focus-visible .excel-logo,
+    .export-shell.open .excel-logo {
+      transform: translateX(4px) rotate(-3deg) scale(1.08);
+    }
+
+    .export-menu {
+      position: absolute;
+      top: calc(100% + 10px);
+      right: 0;
+      z-index: 60;
+      min-width: 230px;
+      padding: 8px;
+      border: 1px solid rgba(255,255,255,.78);
+      border-radius: 18px;
+      background: rgba(255,255,255,.78);
+      box-shadow: 0 24px 60px rgba(15, 81, 50, .16);
+      backdrop-filter: blur(20px) saturate(1.18);
+      opacity: 0;
+      transform: translateY(8px) scale(.98);
+      pointer-events: none;
+      transition: opacity .22s ease, transform .22s ease;
+    }
+
+    .export-shell.open .export-menu {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+
+    .export-option {
+      display: flex;
+      width: 100%;
+      align-items: center;
+      gap: 10px;
+      border-radius: 13px;
+      padding: 10px;
+      color: #0f172a;
+      text-align: left;
+      transition: background .18s ease, transform .18s ease;
+    }
+
+    .export-option:hover {
+      transform: translateX(2px);
+      background: rgba(220, 252, 231, .72);
+    }
+
+    .export-option-mark {
+      display: grid;
+      width: 32px;
+      height: 32px;
+      place-items: center;
+      border-radius: 10px;
+      background: #dcfce7;
+      color: #15803d;
+      font-weight: 900;
+    }
+
+    .shift-pill {
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.78);
+      background: rgba(255,255,255,.70);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.86),
+        0 14px 34px rgba(30, 111, 180, .10);
+      backdrop-filter: blur(18px);
+      transition:
+        min-height .34s cubic-bezier(.2,.8,.2,1),
+        padding .34s cubic-bezier(.2,.8,.2,1),
+        gap .34s cubic-bezier(.2,.8,.2,1),
+        box-shadow .34s cubic-bezier(.2,.8,.2,1);
+    }
+
+    .shift-pill.compact {
+      min-height: 48px;
+      padding: 6px 10px;
+    }
+
+    .shift-pill.compact .shift-avatar {
+      width: 38px;
+      height: 38px;
+      font-size: .98rem;
+      transition:
+        width .34s cubic-bezier(.2,.8,.2,1),
+        height .34s cubic-bezier(.2,.8,.2,1),
+        font-size .34s cubic-bezier(.2,.8,.2,1);
+    }
+
+    .outlook-btn {
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #0a66c2, #0ea5e9);
+      color: #fff;
+      padding: 7px 8px 7px 10px;
+      font-size: .84rem;
+      font-weight: 900;
+      box-shadow: 0 12px 26px rgba(14, 116, 177, .22);
+      transition: transform .2s ease, box-shadow .2s ease, width .42s cubic-bezier(.2,.8,.2,1), filter .2s ease;
+    }
+
+    .outlook-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 16px 32px rgba(14, 116, 177, .28);
+    }
+
+    .outlook-btn > span {
+      position: relative;
+      z-index: 2;
+    }
+
+    .outlook-btn::after {
+      content: "";
+      position: absolute;
+      inset: -45% auto -45% -38%;
+      width: 30%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.8), transparent);
+      transform: translateX(-140%) skewX(-18deg);
+      animation: outlookGlance 3s ease-in-out infinite;
+      z-index: 0;
+    }
+
+    .outlook-magic {
+      width: 246px;
+      min-height: 48px;
+    }
+
+    .outlook-magic:hover,
+    .outlook-magic:focus-visible {
+      width: 264px;
+      filter: saturate(1.12);
+    }
+
+    #sendOutlookBtn.outlook-magic {
+      width: 244px;
+    }
+
+    #sendOutlookBtn.outlook-magic:hover,
+    #sendOutlookBtn.outlook-magic:focus-visible {
+      width: 260px;
+    }
+
+    .outlook-magic::before {
+      content: "";
+      position: absolute;
+      inset: 2px;
+      border-radius: inherit;
+      background:
+        radial-gradient(circle at 18% 15%, rgba(255,255,255,.42), transparent 26%),
+        linear-gradient(135deg, rgba(255,255,255,.16), transparent 52%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .outlook-copy {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      align-items: center;
+      min-width: 0;
+      height: 30px;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-align: left;
+      line-height: 1.05;
+    }
+
+    .outlook-copy span {
+      grid-area: 1 / 1;
+      display: block;
+      white-space: nowrap;
+      letter-spacing: -.01em;
+      font-size: .76rem;
+      text-shadow: 0 1px 8px rgba(0, 58, 122, .16);
+    }
+
+    .outlook-question {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+      transition: opacity .42s cubic-bezier(.2,.8,.2,1), transform .42s cubic-bezier(.2,.8,.2,1), filter .42s ease;
+    }
+
+    .outlook-action {
+      opacity: 0;
+      transform: translateY(18px) scale(.96);
+      filter: blur(6px);
+      transition: opacity .42s cubic-bezier(.2,.8,.2,1), transform .42s cubic-bezier(.2,.8,.2,1), filter .42s ease;
+    }
+
+    .outlook-magic:hover .outlook-question,
+    .outlook-magic:focus-visible .outlook-question {
+      opacity: 0;
+      transform: translateY(-18px) scale(.96);
+      filter: blur(6px);
+    }
+
+    .outlook-magic:hover .outlook-action,
+    .outlook-magic:focus-visible .outlook-action {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+
+    .outlook-magic .outlook-logo {
+      transition: transform .42s cubic-bezier(.2,.8,.2,1);
+    }
+
+    .outlook-magic:hover .outlook-logo,
+    .outlook-magic:focus-visible .outlook-logo {
+      transform: translateX(4px) rotate(-3deg) scale(1.08);
+    }
+
+    .outlook-magic .send-arrow {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      flex: 0 0 28px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.20);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.30);
+      opacity: .72;
+      transition: opacity .35s ease, transform .42s cubic-bezier(.2,.8,.2,1);
+    }
+
+    .outlook-magic:hover .send-arrow,
+    .outlook-magic:focus-visible .send-arrow {
+      opacity: 1;
+      transform: translateY(-2px) rotate(42deg);
+    }
+
+    .outlook-logo {
+      position: relative;
+      z-index: 1;
+      width: 28px;
+      height: 28px;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      flex: 0 0 auto;
+    }
+
+    .outlook-logo::before {
+      content: "O";
+      position: absolute;
+      left: 0;
+      top: 6px;
+      width: 17px;
+      height: 17px;
+      border-radius: 5px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(145deg, #0f6ed0, #1a9df1);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 900;
+      box-shadow:
+        3px 4px 9px rgba(0, 52, 114, .28),
+        inset 0 1px 0 rgba(255,255,255,.30);
+      z-index: 2;
+    }
+
+    .outlook-logo::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      top: 4px;
+      width: 20px;
+      height: 20px;
+      border-radius: 3px;
+      background:
+        linear-gradient(90deg, transparent 48%, rgba(255,255,255,.42) 49% 51%, transparent 52%),
+        linear-gradient(#44c4f4 0 50%, #0878cf 50% 100%);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.22);
+    }
+
+    body.nav-compact .outlook-magic {
+      width: 214px;
+      min-height: 40px;
+      padding: 6px 7px 6px 8px;
+      font-size: .76rem;
+    }
+
+    body.nav-compact .outlook-magic:hover,
+    body.nav-compact .outlook-magic:focus-visible {
+      width: 228px;
+    }
+
+    body.nav-compact .export-btn {
+      width: 174px;
+      min-height: 40px;
+      padding: 6px 7px 6px 8px;
+      font-size: .76rem;
+    }
+
+    body.nav-compact .export-btn:hover,
+    body.nav-compact .export-btn:focus-visible,
+    body.nav-compact .export-shell.open .export-btn {
+      width: 190px;
+    }
+
+    body.nav-compact .outlook-logo,
+    body.nav-compact .excel-logo {
+      width: 24px;
+      height: 24px;
+    }
+
+    body.nav-compact .outlook-copy,
+    body.nav-compact .export-copy {
+      height: 25px;
+    }
+
+    body.nav-compact .outlook-copy span,
+    body.nav-compact .export-copy span {
+      font-size: .66rem;
+    }
+
+    body.nav-compact .outlook-magic .send-arrow,
+    body.nav-compact .export-btn .send-arrow {
+      width: 24px;
+      height: 24px;
+      flex-basis: 24px;
+    }
+
+    body.nav-compact .shift-pill.compact {
+      min-height: 40px;
+      gap: 8px;
+      padding: 5px 9px;
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.86),
+        0 10px 24px rgba(30, 111, 180, .09);
+    }
+
+    body.nav-compact .shift-pill.compact .shift-avatar {
+      width: 30px;
+      height: 30px;
+      font-size: .84rem;
+    }
+
+    @keyframes outlookGlance {
+      0%, 42% { opacity: 0; transform: translateX(-140%) skewX(-18deg); }
+      52% { opacity: .88; }
+      72%, 100% { opacity: 0; transform: translateX(520%) skewX(-18deg); }
+    }
+
+    @keyframes outlookButtonBreath {
+      0%, 34%, 100% { width: 250px; filter: saturate(1); }
+      44%, 76% { width: 248px; filter: saturate(1.12); }
+      50%, 68% { width: 260px; }
+    }
+
+    @keyframes outlookQuestionText {
+      0%, 36% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+      45%, 100% { opacity: 0; transform: translateY(-18px) scale(.96); filter: blur(6px); }
+    }
+
+    @keyframes outlookActionText {
+      0%, 38% { opacity: 0; transform: translateY(18px) scale(.96); filter: blur(6px); }
+      50%, 78% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+      88%, 100% { opacity: 0; transform: translateY(-14px) scale(.98); filter: blur(5px); }
+    }
+
+    @keyframes outlookIconPop {
+      0%, 36%, 100% { transform: translateX(0) rotate(0deg) scale(1); }
+      44% { transform: translateX(4px) rotate(-3deg) scale(1.08); }
+      58%, 78% { transform: translateX(0) rotate(0deg) scale(1); }
+    }
+
+    @keyframes outlookArrowRise {
+      0%, 34% { opacity: .72; transform: translateY(0) rotate(0deg); }
+      44%, 76% { opacity: 1; transform: translateY(-2px) rotate(42deg); }
+      86%, 100% { opacity: .72; transform: translateY(0) rotate(0deg); }
+    }
+
+    @keyframes navGlance {
+      0%, 48% { opacity: 0; transform: translateX(-120%) skewX(-18deg); }
+      58% { opacity: .85; }
+      78%, 100% { opacity: 0; transform: translateX(360%) skewX(-18deg); }
+    }
+
+    @keyframes navRipple {
+      0% { opacity: .9; transform: translate(-50%, -50%) scale(.4); }
+      100% { opacity: 0; transform: translate(-50%, -50%) scale(28); }
+    }
+
+    @keyframes searchTargetGlow {
+      0% {
+        outline-color: rgba(14, 165, 233, .70);
+        box-shadow: 0 0 0 0 rgba(14, 165, 233, .20), 0 18px 48px rgba(14, 116, 217, .13);
+      }
+      65% {
+        outline-color: rgba(14, 165, 233, .42);
+        box-shadow: 0 0 0 8px rgba(14, 165, 233, 0), 0 18px 48px rgba(14, 116, 217, .10);
+      }
+      100% {
+        outline-color: rgba(14, 165, 233, 0);
+        box-shadow: inherit;
+      }
+    }
+
+    @keyframes meterGrow {
+      from { transform: scaleX(0); opacity: .45; }
+      to { transform: scaleX(1); opacity: 1; }
+    }
+
+    @keyframes numberSettle {
+      0% { transform: translateY(5px) scale(.96); filter: blur(3px); opacity: .68; }
+      55% { transform: translateY(-2px) scale(1.04); filter: blur(0); opacity: 1; }
+      100% { transform: translateY(0) scale(1); filter: blur(0); opacity: 1; }
+    }
+
+    @keyframes kpiGlance {
+      0%, 56% { opacity: 0; transform: translateX(-140%) skewX(-18deg); }
+      64% { opacity: .82; }
+      82%, 100% { opacity: 0; transform: translateX(430%) skewX(-18deg); }
+    }
+
+    .dashboard-grid {
+      grid-template-columns: 1fr !important;
+    }
+
+    .sidebar {
+      display: none;
+    }
+
+    @keyframes fadeUp {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes floaty {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+
+    @keyframes pulseRing {
+      70% { box-shadow: 0 0 0 14px rgba(56, 189, 248, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+    }
+
+    @media (max-width: 1024px) {
+      .dashboard-grid { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .overview-layout {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+          "hero"
+          "throughput"
+          "incoming";
+      }
+
+      .overview-hero {
+        min-height: 0;
+      }
+
+      .incoming-chart-shell {
+        height: 190px;
+        max-width: 520px;
+      }
+
+      .trend-chart-shell {
+        height: 190px;
+      }
+    }
+
+    @media (max-width: 1460px) {
+      .nav-layout {
+        flex-wrap: wrap;
+      }
+
+      .nav-brand {
+        min-width: 188px;
+      }
+
+      .nav-brand-icon {
+        width: 86px;
+      }
+
+      .micron-logo {
+        width: 74px;
+      }
+
+      .nav-search {
+        order: 4;
+        flex-basis: 100%;
+      }
+
+      .nav-actions {
+        margin-left: 0;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .nav-brand {
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+
+      .nav-brand-icon {
+        width: 82px;
+        height: 36px;
+      }
+
+      .micron-logo {
+        width: 70px;
+      }
+
+      .nav-brand-copy p:last-child {
+        display: none;
+      }
+
+      .nav-tabs {
+        width: 100%;
+        overflow-x: auto;
+        justify-content: flex-start;
+      }
+
+      .search-status {
+        display: none;
+      }
+
+      .nav-actions {
+        width: 100%;
+        flex-wrap: wrap;
+      }
+
+      .outlook-magic,
+      .outlook-magic:hover,
+      .outlook-magic:focus-visible {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body class="font-sans">
+  <main class="min-h-screen p-2 sm:p-3 lg:p-4">
+    <section class="shell mx-auto grid w-full grid-cols-1 gap-3 rounded-[24px] p-0 dashboard-grid">
+      <aside class="sidebar glass rounded-[22px] p-5">
+        <div class="mb-10 flex items-center gap-3">
+          <div class="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-sky-400 to-blue-700 text-white shadow-soft">
+            <svg width="23" height="23" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M5 7.5C5 5.57 6.57 4 8.5 4h7C17.43 4 19 5.57 19 7.5v9c0 1.93-1.57 3.5-3.5 3.5h-7A3.5 3.5 0 0 1 5 16.5v-9Z" stroke="currentColor" stroke-width="2"/>
+              <path d="M8.4 9.2h7.2M8.4 12h7.2M8.4 14.8h4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div>
+            <p class="text-lg font-extrabold tracking-tight">Post E QDR</p>
+            <p class="text-xs font-medium text-slate-400">Shift passdown</p>
+          </div>
+        </div>
+
+        <nav class="space-y-2 text-sm font-semibold">
+          <a href="#overview" class="nav-item active flex items-center gap-3 rounded-2xl px-4 py-3">
+            <span class="grid h-7 w-7 place-items-center rounded-xl bg-white text-sky-600">O</span>Overview
+          </a>
+          <a href="#lots" class="nav-item flex items-center gap-3 rounded-2xl px-4 py-3 text-slate-500">
+            <span class="grid h-7 w-7 place-items-center rounded-xl bg-white text-sky-600">L</span>Lot Flow
+          </a>
+          <a href="#issues" class="nav-item flex items-center gap-3 rounded-2xl px-4 py-3 text-slate-500">
+            <span class="grid h-7 w-7 place-items-center rounded-xl bg-white text-sky-600">!</span>Issues
+          </a>
+          <a href="#compose" class="nav-item flex items-center gap-3 rounded-2xl px-4 py-3 text-slate-500">
+            <span class="grid h-7 w-7 place-items-center rounded-xl bg-white text-sky-600">@</span>Email
+          </a>
+          <a href="#locations" class="nav-item flex items-center gap-3 rounded-2xl px-4 py-3 text-slate-500">
+            <span class="grid h-7 w-7 place-items-center rounded-xl bg-white text-sky-600">Q</span>Locations
+          </a>
+        </nav>
+
+        <div class="mt-10 rounded-[22px] bg-gradient-to-br from-sky-600 to-blue-800 p-4 text-white shadow-soft">
+          <div class="mb-8 h-10 w-10 rounded-2xl bg-white/20 p-2 pulse-ring">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 3v18M4 12h16" stroke="white" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <p class="text-sm font-bold">Priority signal</p>
+          <p class="mt-1 text-xs leading-5 text-sky-100">High reject substrate chips are the main handoff concern.</p>
+        </div>
+      </aside>
+
+      <section class="space-y-3">
+        <header class="app-nav px-4 py-3 sm:px-5">
+          <div class="nav-layout">
+            <div class="nav-brand flex items-center gap-3">
+              <a href="#overview" class="flex items-center gap-3">
+                <div class="nav-brand-icon grid h-11 w-11 place-items-center text-white">
+                  <img class="micron-logo" src="assets/img/micron-com-wordmark.png" alt="Micron" />
+                </div>
+                <div class="nav-brand-copy">
+                  <p class="text-[1.08rem] font-[850] leading-tight tracking-[-.02em] text-slate-950">Post E QDR</p>
+                  <p class="mt-1 text-xs font-semibold text-slate-400">Shift passdown</p>
+                </div>
+              </a>
+            </div>
+
+            <nav class="nav-tabs">
+              <a href="#overview" class="top-nav-link active">Overview</a>
+              <a href="#trends" class="top-nav-link">Trends</a>
+              <a href="#compose" class="top-nav-link">Email</a>
+              <a href="#lots" class="top-nav-link">Lot Flow</a>
+              <a href="#issues" class="top-nav-link">Issues</a>
+              <a href="#locations" class="top-nav-link">Locations</a>
+            </nav>
+
+            <label class="nav-search flex min-h-[50px] items-center gap-3 px-4">
+              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" class="text-slate-500" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/>
+                <path d="m16.5 16.5 3.5 3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <input id="searchInput" class="min-w-0 flex-1 bg-transparent text-[.95rem] font-medium outline-none placeholder:text-slate-400" placeholder="Search any dashboard content..." />
+              <span id="searchStatus" class="search-status" aria-live="polite"></span>
+              <button id="searchSubmit" class="search-submit" type="button" aria-label="Search dashboard">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="2.1"/>
+                  <path d="m16 16 4 4" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </label>
+
+            <div class="nav-actions">
+              <button id="topOutlookBtn" class="outlook-btn outlook-magic">
+                <span class="outlook-logo" aria-hidden="true"></span>
+                <span class="outlook-copy">
+                  <span class="outlook-question">Wanna send email now ?</span>
+                  <span class="outlook-action">Send via Outlook now!</span>
+                </span>
+                <span class="send-arrow" aria-hidden="true">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+                    <path d="M5 12h13M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </span>
+              </button>
+              <div id="exportShell" class="export-shell">
+                <button id="exportBtn" class="export-btn" type="button" aria-expanded="false" aria-haspopup="true">
+                  <span class="excel-logo" aria-hidden="true"></span>
+                  <span class="export-copy">
+                    <span class="export-question">Export Summary</span>
+                    <span class="export-action">Export to Excel now!</span>
+                  </span>
+                  <span class="send-arrow" aria-hidden="true">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+                      <path d="M5 12h13M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </span>
+                </button>
+                <div id="exportMenu" class="export-menu" role="menu">
+                  <button class="export-option" type="button" data-export-mode="desktop" role="menuitem">
+                    <span class="export-option-mark">X</span>
+                    <span>
+                      <span class="block text-sm font-extrabold">Excel desktop</span>
+                      <span class="block text-xs font-semibold text-slate-500">Download .xls and open in Excel</span>
+                    </span>
+                  </button>
+                  <button class="export-option" type="button" data-export-mode="web" role="menuitem">
+                    <span class="export-option-mark">W</span>
+                    <span>
+                      <span class="block text-sm font-extrabold">Excel web</span>
+                      <span class="block text-xs font-semibold text-slate-500">Download file, then open Office web</span>
+                    </span>
+                  </button>
+                </div>
+              </div>
+              <div class="shift-pill compact flex items-center gap-3">
+                <div id="navShiftAvatar" class="shift-avatar grid place-items-center rounded-full bg-sky-100 font-semibold text-slate-800">B</div>
+                <div class="hidden sm:block">
+                  <p id="navShiftLabel" class="text-sm font-[850] tracking-[-.01em] text-slate-950">Shift B</p>
+                  <p id="navShiftDetail" class="max-w-[132px] text-xs font-medium leading-4 text-slate-400">01 Jul 2026 | Day Shift</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <section id="overview" class="overview-layout">
+          <div class="overview-hero glass-strong fade-up rounded-[22px] p-4">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p class="text-xs font-bold uppercase tracking-[.18em] text-sky-600">Micron Confidential</p>
+                <h1 class="mt-1 max-w-2xl text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">Post E Shift Report Dashboard</h1>
+                <p class="mt-2 max-w-xl text-xs leading-5 text-slate-500">Interactive passdown view for MSO, MAM, TSUMS, line issues, lot movement and QDR incoming locations.</p>
+              </div>
+              <div class="floaty rounded-[18px] bg-white/75 p-3 text-right shadow-soft">
+                <p class="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Report Health</p>
+                <p class="mt-1 text-2xl font-extrabold text-sky-700"><span data-count="9">0</span></p>
+                <p class="text-xs text-slate-400">active records</p>
+              </div>
+            </div>
+
+            <div class="kpi-grid mt-4 grid gap-2 sm:grid-cols-4">
+              <article class="kpi-card metric-card blue-card rounded-[16px] p-3">
+                <p class="relative z-10 text-sm font-semibold text-sky-50">Total Lots Tracked</p>
+                <div class="relative z-10 mt-2 flex items-end justify-between gap-2">
+                  <p class="text-2xl font-extrabold"><span id="totalLotsKpi" data-count="7">0</span></p>
+                  <p class="pb-1 text-[10px] font-bold text-sky-100">MSO + MAM</p>
+                </div>
+                <div class="metric-meter mt-2"><span id="totalLotsMeter" style="--meter: 7%"></span></div>
+              </article>
+              <article class="kpi-card metric-card glass rounded-[16px] p-3">
+                <p class="text-sm font-bold text-slate-500">MAM Onhold</p>
+                <div class="mt-2 flex items-end justify-between gap-2">
+                  <p class="text-2xl font-extrabold text-ink"><span id="mamOnholdKpi" data-count="3">0</span></p>
+                  <p class="pb-1 text-[10px] font-bold text-sky-700">B58R</p>
+                </div>
+                <div class="metric-meter mt-2"><span id="mamOnholdMeter" style="--meter: 3%"></span></div>
+              </article>
+              <article class="kpi-card metric-card glass rounded-[16px] p-3">
+                <p class="text-sm font-bold text-slate-500">Line Issues</p>
+                <div class="mt-2 flex items-end justify-between gap-2">
+                  <p class="text-2xl font-extrabold text-ink"><span id="lineIssuesKpi" data-count="3">0</span></p>
+                  <p class="pb-1 text-[10px] font-bold text-sky-700">DM / Mark</p>
+                </div>
+                <div class="metric-meter mt-2"><span id="lineIssuesMeter" style="--meter: 3%"></span></div>
+              </article>
+              <article class="kpi-card metric-card glass rounded-[16px] p-3">
+                <p class="text-sm font-bold text-slate-500">Incoming Lots</p>
+                <div class="mt-2 flex items-end justify-between gap-2">
+                  <p class="text-2xl font-extrabold text-ink"><span id="incomingKpi" data-count="97">0</span></p>
+                  <p class="pb-1 text-[10px] font-bold text-sky-700">3 locations</p>
+                </div>
+                <div class="metric-meter mt-2"><span id="incomingMeter" style="--meter: 97%"></span></div>
+              </article>
+            </div>
+          </div>
+
+          <article class="overview-throughput glass fade-up rounded-[22px] p-4" style="animation-delay: .08s">
+              <div class="mb-2 flex items-center justify-between">
+                <div>
+                  <p class="text-sm font-extrabold">Lot Throughput</p>
+                  <p class="text-xs text-slate-400">Start, processed and end of shift</p>
+                </div>
+                <span class="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-700">Live</span>
+              </div>
+              <canvas id="throughputChart" height="110"></canvas>
+            </article>
+
+          <article class="overview-incoming glass fade-up rounded-[22px] p-4" style="animation-delay: .14s">
+              <div class="mb-2 flex items-center justify-between">
+                <div>
+                  <p class="text-sm font-extrabold">QDR Incoming</p>
+                  <p class="text-xs text-slate-400">End of shift location spread</p>
+                </div>
+                <button class="rounded-full border border-sky-200 px-3 py-1 text-xs font-bold text-sky-700" data-scroll="locations">View</button>
+              </div>
+              <div class="incoming-chart-shell">
+                <canvas id="locationChart"></canvas>
+              </div>
+            </article>
+        </section>
+
+        <section id="trends" class="grid gap-3 xl:grid-cols-[1.25fr_.75fr]">
+          <article class="trend-panel glass rounded-[22px] p-4">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 class="text-xl font-extrabold tracking-tight">Shift Trend Monitor</h2>
+                <p class="text-sm text-slate-500">Saved passdown snapshots across shifts</p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button id="captureShiftBtn" class="action-pill bg-sky-700 text-white">Save Shift Snapshot</button>
+                <button id="clearTrendBtn" class="action-pill bg-white text-slate-600 ring-1 ring-slate-200">Reset History</button>
+                <button id="toggleTrendBtn" class="action-pill bg-white text-sky-800 ring-1 ring-sky-200" type="button" aria-expanded="true">Minimize</button>
+              </div>
+            </div>
+            <div class="trend-summary-strip mt-3 grid-cols-2 gap-2 sm:grid-cols-4">
+              <div class="rounded-[16px] bg-white/68 p-3">
+                <p class="text-xs font-bold text-slate-400">Saved</p>
+                <p id="trendSavedMini" class="text-lg font-extrabold text-ink">0</p>
+              </div>
+              <div class="rounded-[16px] bg-white/68 p-3">
+                <p class="text-xs font-bold text-slate-400">Incoming</p>
+                <p id="trendIncomingMini" class="text-lg font-extrabold text-sky-700">0</p>
+              </div>
+              <div class="rounded-[16px] bg-white/68 p-3">
+                <p class="text-xs font-bold text-slate-400">Eng Proc</p>
+                <p id="trendEngMini" class="text-lg font-extrabold text-sky-700">0</p>
+              </div>
+              <div class="rounded-[16px] bg-white/68 p-3">
+                <p class="text-xs font-bold text-slate-400">Issues</p>
+                <p id="trendIssuesMini" class="text-lg font-extrabold text-sky-700">0</p>
+              </div>
+            </div>
+            <div class="trend-body mt-3">
+              <div class="trend-chart-shell">
+                <canvas id="trendChart"></canvas>
+              </div>
+            </div>
+          </article>
+
+          <article class="trend-panel glass rounded-[22px] p-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-xl font-extrabold tracking-tight">History</h2>
+                <p id="latestSnapshotLabel" class="text-sm text-slate-500">No saved shifts yet</p>
+              </div>
+              <span id="historyCount" class="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-800">0 saved</span>
+            </div>
+            <div class="trend-body mt-3">
+              <div id="historyList" class="history-list space-y-2"></div>
+            </div>
+          </article>
+        </section>
+
+        <section id="compose" class="grid gap-3 xl:grid-cols-[1fr_1fr]">
+          <article class="glass rounded-[22px] p-4">
+            <div class="mb-5 flex items-center justify-between">
+              <div>
+                <h2 class="text-xl font-extrabold tracking-tight">Data Entry</h2>
+                <p class="text-sm text-slate-500">Key in passdown details and refresh the dashboard instantly</p>
+              </div>
+              <span class="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-800">Editable</span>
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label>
+                <span class="field-label">Shift Pattern</span>
+                <select id="shiftInput" class="field">
+                  <option value="A">Shift A</option>
+                  <option value="B" selected>Shift B</option>
+                  <option value="C">Shift C</option>
+                  <option value="D">Shift D</option>
+                </select>
+              </label>
+              <label>
+                <span class="field-label">Report Date</span>
+                <input id="dateInput" class="field" type="date" value="2026-07-01" />
+              </label>
+              <label>
+                <span class="field-label">Shift Type</span>
+                <select id="shiftTypeInput" class="field">
+                  <option selected>Day Shift</option>
+                  <option>Night Shift</option>
+                </select>
+              </label>
+              <label>
+                <span class="field-label">Prepared By</span>
+                <input id="preparedByInput" class="field" value="Shift B" />
+              </label>
+            </div>
+
+            <div class="mt-5 rounded-[22px] bg-white/58 p-4">
+              <p class="mb-4 text-sm font-extrabold">Lot Movement</p>
+              <div class="grid gap-3 sm:grid-cols-3">
+                <label>
+                  <span class="field-label">Eng Start</span>
+                  <input id="engStartInput" class="field" type="number" min="0" value="6" />
+                </label>
+                <label>
+                  <span class="field-label">Eng Process</span>
+                  <input id="engProcessInput" class="field" type="number" min="0" value="29" />
+                </label>
+                <label>
+                  <span class="field-label">Eng End</span>
+                  <input id="engEndInput" class="field" type="number" min="0" value="0" />
+                </label>
+                <label>
+                  <span class="field-label">MAM Start</span>
+                  <input id="mamStartInput" class="field" type="number" min="0" value="1" />
+                </label>
+                <label>
+                  <span class="field-label">MAM Process</span>
+                  <input id="mamProcessInput" class="field" type="number" min="0" value="0" />
+                </label>
+                <label>
+                  <span class="field-label">MAM End</span>
+                  <input id="mamEndInput" class="field" type="number" min="0" value="1" />
+                </label>
+              </div>
+            </div>
+
+            <div class="mt-5 rounded-[22px] bg-white/58 p-4">
+              <p class="mb-4 text-sm font-extrabold">QDR Incoming Locations</p>
+              <div class="grid gap-3 sm:grid-cols-3">
+                <label>
+                  <span class="field-label">Incoming 01</span>
+                  <input id="loc01Input" class="field" type="number" min="0" value="47" />
+                </label>
+                <label>
+                  <span class="field-label">Incoming 02</span>
+                  <input id="loc02Input" class="field" type="number" min="0" value="43" />
+                </label>
+                <label>
+                  <span class="field-label">Incoming 03</span>
+                  <input id="loc03Input" class="field" type="number" min="0" value="7" />
+                </label>
+              </div>
+              <button id="updateNumbersBtn" class="action-pill mt-4 bg-white text-sky-800 ring-1 ring-sky-200">Update Numbers</button>
+            </div>
+
+            <div class="mt-5 rounded-[22px] bg-white/58 p-4">
+              <p class="mb-4 text-sm font-extrabold">Add Lot Record</p>
+              <div class="grid gap-3 sm:grid-cols-2">
+                <select id="lotTypeInput" class="field">
+                  <option value="onhold">Onhold</option>
+                  <option value="release">Release</option>
+                </select>
+                <input id="lotAreaInput" class="field" placeholder="Area e.g. MAM Onhold" />
+                <input id="lotIdInput" class="field" placeholder="Lot ID" />
+                <input id="designInput" class="field" placeholder="Design ID" />
+                <input id="stepInput" class="field" placeholder="Step / Location" />
+                <input id="picInput" class="field" placeholder="PIC" />
+                <textarea id="issueInput" class="field sm:col-span-2" rows="3" placeholder="Issue details"></textarea>
+              </div>
+              <button id="addLotBtn" class="action-pill mt-4 bg-sky-700 text-white">Add Lot</button>
+            </div>
+
+            <div class="mt-5 rounded-[22px] bg-white/58 p-4">
+              <p class="mb-4 text-sm font-extrabold">Add Line Issue</p>
+              <div class="grid gap-3 sm:grid-cols-2">
+                <input id="lineLotInput" class="field" placeholder="Lot ID" />
+                <input id="machineInput" class="field" placeholder="Machine ID" />
+                <input id="problemInput" class="field" placeholder="Problem" />
+                <input id="solutionInput" class="field" placeholder="Solution" />
+              </div>
+              <button id="addLineBtn" class="action-pill mt-4 bg-white text-sky-800 ring-1 ring-sky-200">Add Line Issue</button>
+            </div>
+          </article>
+
+          <article class="glass rounded-[22px] p-4">
+            <div class="mb-5">
+              <h2 class="text-xl font-extrabold tracking-tight">Outlook Email</h2>
+              <p class="text-sm text-slate-500">Preview the email, then open Outlook compose prefilled</p>
+            </div>
+
+            <div class="grid gap-4">
+              <label>
+                <span class="field-label">To</span>
+                <input id="emailToInput" class="field" placeholder="recipient@company.com; team@company.com" />
+              </label>
+              <label>
+                <span class="field-label">Cc</span>
+                <input id="emailCcInput" class="field" placeholder="optional.cc@company.com" />
+              </label>
+              <label>
+                <span class="field-label">Subject</span>
+                <input id="emailSubjectInput" class="field" />
+              </label>
+              <label>
+                <span class="field-label">Email Body</span>
+                <textarea id="emailBodyInput" class="field min-h-[340px] leading-6" rows="14"></textarea>
+              </label>
+            </div>
+
+            <div class="mt-4 flex flex-wrap gap-3">
+              <button id="refreshEmailBtn" class="action-pill bg-white text-sky-800 ring-1 ring-sky-200">Refresh Email</button>
+              <button id="sendOutlookBtn" class="outlook-btn outlook-magic">
+                <span class="outlook-logo" aria-hidden="true"></span>
+                <span class="outlook-copy">
+                  <span class="outlook-question">Wanna send email now ?</span>
+                  <span class="outlook-action">Send via Outlook now!</span>
+                </span>
+                <span class="send-arrow" aria-hidden="true">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+                    <path d="M5 12h13M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </span>
+              </button>
+              <button id="downloadEmlBtn" class="action-pill bg-blue-950 text-white">Download .eml</button>
+            </div>
+            <p class="mt-4 rounded-2xl bg-sky-50 px-4 py-3 text-xs font-semibold leading-5 text-slate-500">Browser security does not allow silent email sending. The Outlook button opens a prefilled compose window so the user can review and send.</p>
+          </article>
+        </section>
+
+        <section id="lots" class="grid gap-3 xl:grid-cols-[.95fr_1.05fr]">
+          <article class="glass rounded-[22px] p-4">
+            <div class="mb-5 flex items-center justify-between">
+              <div>
+                <h2 class="text-xl font-extrabold tracking-tight">Handoff Focus</h2>
+                <p class="text-sm text-slate-500">Quick filter for each passdown block</p>
+              </div>
+              <div class="flex rounded-full bg-sky-50 p-1 text-xs font-bold text-sky-700">
+                <button class="tab active rounded-full px-4 py-2" data-filter="all">All</button>
+                <button class="tab rounded-full px-4 py-2" data-filter="onhold">Onhold</button>
+                <button class="tab rounded-full px-4 py-2" data-filter="release">Release</button>
+              </div>
+            </div>
+
+            <div id="lotList" class="space-y-3"></div>
+          </article>
+
+          <article class="glass rounded-[22px] p-4">
+            <div class="mb-5 flex items-center justify-between">
+              <div>
+                <h2 class="text-xl font-extrabold tracking-tight">Issue Mix</h2>
+                <p class="text-sm text-slate-500">What needs attention before next shift</p>
+              </div>
+              <span class="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-500 shadow-sm">9 items</span>
+            </div>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div class="issue-card rounded-[22px] bg-white/72 p-4 shadow-sm">
+                <p class="text-xs font-bold uppercase tracking-[.16em] text-sky-600">Primary theme</p>
+                <h3 class="mt-3 text-lg font-extrabold">High reject substrate chips</h3>
+                <p class="mt-2 text-sm leading-6 text-slate-500">MAM onhold contains three lots for B58R, all held for yield team review.</p>
+                <div class="mt-5 h-2 rounded-full bg-sky-100">
+                  <div class="h-2 w-full rounded-full bg-gradient-to-r from-sky-500 to-blue-700"></div>
+                </div>
+              </div>
+              <div class="issue-card rounded-[22px] bg-white/72 p-4 shadow-sm">
+                <p class="text-xs font-bold uppercase tracking-[.16em] text-sky-600">Line recovery</p>
+                <h3 class="mt-3 text-lg font-extrabold">Illumination & alignment</h3>
+                <p class="mt-2 text-sm leading-6 text-slate-500">Invalid data matrix calls need illumination +10% and recalculated mark alignment.</p>
+                <div class="mt-5 h-2 rounded-full bg-sky-100">
+                  <div class="h-2 w-3/4 rounded-full bg-gradient-to-r from-cyan-400 to-sky-600"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-5 rounded-[22px] bg-gradient-to-br from-sky-50 to-white p-4">
+              <div class="mb-3 flex items-center justify-between">
+                <p class="font-extrabold">Design Distribution</p>
+                <p class="text-xs font-bold text-slate-400">Y62E | Y53A | B58R</p>
+              </div>
+              <canvas id="designChart" height="150"></canvas>
+            </div>
+          </article>
+        </section>
+
+        <section id="issues" class="grid gap-3 xl:grid-cols-[1.1fr_.9fr]">
+          <article class="glass rounded-[22px] p-4">
+            <div class="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 class="text-xl font-extrabold tracking-tight">Line Issues</h2>
+                <p class="text-sm text-slate-500">Machine-level actions from the passdown</p>
+              </div>
+              <span class="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-800">KLAT790 only</span>
+            </div>
+            <div id="lineIssueList" class="space-y-3"></div>
+          </article>
+
+          <article class="glass rounded-[22px] p-4">
+            <div class="mb-5">
+              <h2 class="text-xl font-extrabold tracking-tight">Action Radar</h2>
+              <p class="text-sm text-slate-500">Priority readout by operational impact</p>
+            </div>
+            <div class="relative mx-auto grid aspect-square max-w-[330px] place-items-center rounded-full bg-gradient-to-br from-sky-100 to-white p-8 shadow-inner">
+              <div class="absolute h-[78%] w-[78%] rounded-full border border-dashed border-sky-300"></div>
+              <div class="absolute h-[52%] w-[52%] rounded-full border border-dashed border-sky-300"></div>
+              <div class="z-10 grid h-36 w-36 place-items-center rounded-full bg-white text-center shadow-soft">
+                <div>
+                  <p class="text-4xl font-extrabold text-sky-700">3</p>
+                  <p class="text-xs font-bold text-slate-400">urgent holds</p>
+                </div>
+              </div>
+              <span class="absolute right-10 top-12 rounded-full bg-blue-600 px-3 py-1 text-xs font-bold text-white">MAM</span>
+              <span class="absolute bottom-16 left-8 rounded-full bg-sky-500 px-3 py-1 text-xs font-bold text-white">Line</span>
+              <span class="absolute bottom-8 right-14 rounded-full bg-cyan-400 px-3 py-1 text-xs font-bold text-white">MSO</span>
+            </div>
+          </article>
+        </section>
+
+        <section id="locations" class="grid gap-3 xl:grid-cols-[.8fr_1.2fr]">
+          <article class="glass rounded-[22px] p-4">
+            <div class="mb-5">
+              <h2 class="text-xl font-extrabold tracking-tight">End-of-Shift Location</h2>
+              <p class="text-sm text-slate-500">QDR incoming lot count</p>
+            </div>
+            <div id="locationList" class="space-y-3"></div>
+          </article>
+
+          <article class="glass rounded-[22px] p-4">
+            <div class="mb-5 flex items-center justify-between">
+              <div>
+                <h2 class="text-xl font-extrabold tracking-tight">Passdown Summary</h2>
+                <p class="text-sm text-slate-500">Ready for quick handoff review</p>
+              </div>
+              <button id="copyBtn" class="rounded-full bg-sky-700 px-4 py-2 text-sm font-bold text-white shadow-soft transition hover:-translate-y-0.5 hover:bg-sky-800">Copy</button>
+            </div>
+            <div id="summaryText" class="rounded-[22px] bg-white/72 p-5 text-sm leading-7 text-slate-600 shadow-sm">
+              Shift B has 3 MAM onhold lots for B58R POST ELEC due to high reject substrate chips, all held for yield team review under HIDAYAH. MSO release contains 3 ship-to-test lots, while MSO/MAM release and TSUMS have no active exceptions. Engineering Inspect processed 29 lots and ended at 0. MAM QDR on hold remains 1 lot. QDR incoming locations hold 97 lots total, led by P01-QDR-INCOMING-01 with 47 lots.
+            </div>
+          </article>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <div id="toast" class="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 translate-y-5 rounded-full bg-slate-950 px-5 py-3 text-sm font-bold text-white opacity-0 shadow-2xl transition duration-300">Copied passdown summary</div>
+
+  <script>
+    let lots = [
+      { type: 'release', area: 'MSO Release', lot: 'JFQ7Q5M.11', design: 'Y62E', step: 'SHIP TO TEST', pic: '-', issue: 'Y62E PTI XIAN valid reject substrate defect. TST LOT RECEIVE DATE 06-17-2026' },
+      { type: 'release', area: 'MSO Release', lot: 'JFLWR5M.11', design: 'Y53A', step: 'SHIP TO TEST', pic: '-', issue: 'Y53A ASSEMBLY-MMP valid reject substrate defect (low angle). TST LOT RECEIVE DATE 06-05-2026' },
+      { type: 'release', area: 'MSO Release', lot: 'JF8VT5M.11', design: 'Y62E', step: 'SHIP TO TEST', pic: '-', issue: 'Y62E PTI XIAN valid reject substrate defect. TST LOT RECEIVE DATE 06-20-2026, release from EDS' },
+      { type: 'onhold', area: 'MAM Onhold', lot: 'JFHJD5M.11', design: 'B58R', step: 'POST ELEC', pic: 'HIDAYAH', issue: 'QDR found lot eng inspect B58R ASM MUAR high reject substrate dent. Hold for yield team.' },
+      { type: 'onhold', area: 'MAM Onhold', lot: 'JFVFF5M.11', design: 'B58R', step: 'POST ELEC', pic: 'HIDAYAH', issue: 'QDR found lot eng inspect B58R ASM MUAR high reject substrate chips. Hold for yield team.' },
+      { type: 'onhold', area: 'MAM Onhold', lot: '4664551.001', design: 'B58R', step: 'POST ELEC', pic: 'HIDAYAH', issue: 'QDR found lot eng inspect B58R ASM MUAR high reject substrate chips. Hold for yield team.' }
+    ];
+
+    let lineIssues = [
+      { lot: 'JF9QB3M.11', machine: 'KLAT790-0092', problem: 'invalid Data Matrix', solution: 'Increase illumination 10%' },
+      { lot: 'JFZH74M.11', machine: 'KLAT790-0083', problem: 'Mark Alignment invalid.', solution: 'Define area & teach marking.' },
+      { lot: 'JF5HM5M.11', machine: 'KLAT790-0095', problem: 'Invalid mark alignment', solution: 'recalculate mark alignment.' }
+    ];
+
+    let locations = [
+      { name: 'P01-QDR-INCOMING-01', value: 47 },
+      { name: 'P01-QDR-INCOMING-02', value: 43 },
+      { name: 'P01-QDR-INCOMING-03', value: 7 }
+    ];
+
+    let throughputData = [6, 29, 0, 1, 0, 1];
+
+    const lotList = document.getElementById('lotList');
+    const lineIssueList = document.getElementById('lineIssueList');
+    const locationList = document.getElementById('locationList');
+    const searchInput = document.getElementById('searchInput');
+    const searchSubmit = document.getElementById('searchSubmit');
+    const searchStatus = document.getElementById('searchStatus');
+    const navShiftAvatar = document.getElementById('navShiftAvatar');
+    const navShiftLabel = document.getElementById('navShiftLabel');
+    const navShiftDetail = document.getElementById('navShiftDetail');
+    const historyList = document.getElementById('historyList');
+    const historyCount = document.getElementById('historyCount');
+    const latestSnapshotLabel = document.getElementById('latestSnapshotLabel');
+    const toggleTrendBtn = document.getElementById('toggleTrendBtn');
+    const trendSavedMini = document.getElementById('trendSavedMini');
+    const trendIncomingMini = document.getElementById('trendIncomingMini');
+    const trendEngMini = document.getElementById('trendEngMini');
+    const trendIssuesMini = document.getElementById('trendIssuesMini');
+    const SHIFT_HISTORY_KEY = 'post-e-qdr-shift-history-v1';
+    const SHIFT_HISTORY_API = '/api/shift-history';
+    let shiftHistoryCache = [];
+    let backendHistoryReady = false;
+    let throughputChart;
+    let locationChart;
+    let designChart;
+    let trendChart;
+
+    if (window.Chart) {
+      Chart.defaults.font.family = '"Source Sans 3", "Segoe UI", Arial, sans-serif';
+      Chart.defaults.font.weight = '700';
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[char]));
+    }
+
+    function toTargetId(prefix, value, index = 0) {
+      const slug = String(value || index)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      return `${prefix}-${slug || index}`;
+    }
+
+    function normalizeSearchText(value) {
+      return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    }
+
+    function formatReportDate(dateValue) {
+      const date = dateValue ? new Date(`${dateValue}T00:00:00`) : new Date();
+      return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+
+    function getReportMeta() {
+      return {
+        shift: document.getElementById('shiftInput')?.value.trim() || 'B',
+        date: document.getElementById('dateInput')?.value || '2026-07-01',
+        shiftType: document.getElementById('shiftTypeInput')?.value || 'Day Shift',
+        preparedBy: document.getElementById('preparedByInput')?.value.trim() || 'Shift B'
+      };
+    }
+
+    function updateShiftDisplay() {
+      const meta = getReportMeta();
+      const shift = meta.shift.toUpperCase();
+      if (navShiftAvatar) navShiftAvatar.textContent = shift.slice(0, 1);
+      if (navShiftLabel) navShiftLabel.textContent = `Shift ${shift}`;
+      if (navShiftDetail) navShiftDetail.textContent = `${formatReportDate(meta.date)} | ${meta.shiftType}`;
+    }
+
+    function summarizeData() {
+      const onholdLots = lots.filter(item => item.type === 'onhold');
+      const releaseLots = lots.filter(item => item.type === 'release');
+      const mamOnhold = onholdLots.filter(item => item.area.toLowerCase().includes('mam'));
+      const incomingTotal = locations.reduce((sum, item) => sum + Number(item.value || 0), 0);
+      const topLocation = locations.slice().sort((a, b) => b.value - a.value)[0] || { name: 'N/A', value: 0 };
+      const picNames = [...new Set(mamOnhold.map(item => item.pic).filter(pic => pic && pic !== '-'))];
+      return {
+        onholdLots,
+        releaseLots,
+        mamOnhold,
+        incomingTotal,
+        topLocation,
+        picNames
+      };
+    }
+
+    function buildSummaryText() {
+      const meta = getReportMeta();
+      const summary = summarizeData();
+      const owner = summary.picNames.length ? ` under ${summary.picNames.join(', ')}` : '';
+      return `Shift ${meta.shift} has ${summary.mamOnhold.length} MAM onhold lot(s), mainly for ${summary.mamOnhold[0]?.design || 'active designs'} ${summary.mamOnhold[0]?.step || ''}${owner}. ${summary.releaseLots.length ? `Release records contain ${summary.releaseLots.length} lot(s), including ${summary.releaseLots.map(item => item.lot).join(', ')}.` : 'No release records are currently keyed in.'} Engineering Inspect processed ${throughputData[1]} lot(s) and ended with ${throughputData[2]}; MAM QDR ended with ${throughputData[5]}. Line issues total ${lineIssues.length}, with actions captured for ${[...new Set(lineIssues.map(item => item.machine))].join(', ') || 'no machine recorded'}. QDR incoming locations hold ${summary.incomingTotal} lot(s) total, led by ${summary.topLocation.name} with ${summary.topLocation.value} lot(s).`;
+    }
+
+    function readShiftHistory() {
+      if (backendHistoryReady) return shiftHistoryCache.slice();
+      try {
+        const parsed = JSON.parse(localStorage.getItem(SHIFT_HISTORY_KEY) || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function writeLocalShiftHistory(history) {
+      try {
+        localStorage.setItem(SHIFT_HISTORY_KEY, JSON.stringify(history));
+        shiftHistoryCache = history.slice();
+        return true;
+      } catch {
+        showToast('Browser storage is unavailable');
+        return false;
+      }
+    }
+
+    async function loadShiftHistory() {
+      if (location.protocol === 'file:') {
+        shiftHistoryCache = readShiftHistory();
+        backendHistoryReady = false;
+        return shiftHistoryCache;
+      }
+      try {
+        const response = await fetch(SHIFT_HISTORY_API, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const history = await response.json();
+        shiftHistoryCache = Array.isArray(history) ? history : [];
+        backendHistoryReady = true;
+        return shiftHistoryCache;
+      } catch {
+        backendHistoryReady = false;
+        shiftHistoryCache = readShiftHistory();
+        return shiftHistoryCache;
+      }
+    }
+
+    async function writeShiftHistory(history) {
+      const trimmed = history.slice(-24);
+      if (!backendHistoryReady) return writeLocalShiftHistory(trimmed);
+      try {
+        const response = await fetch(SHIFT_HISTORY_API, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(trimmed)
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const saved = await response.json();
+        shiftHistoryCache = Array.isArray(saved) ? saved : trimmed;
+        return true;
+      } catch {
+        backendHistoryReady = false;
+        return writeLocalShiftHistory(trimmed);
+      }
+    }
+
+    function currentShiftSnapshot() {
+      const meta = getReportMeta();
+      const summary = summarizeData();
+      return {
+        id: `${meta.date}-${meta.shift}-${meta.shiftType}`.replace(/\s+/g, '-'),
+        savedAt: new Date().toISOString(),
+        date: meta.date,
+        shift: meta.shift.toUpperCase(),
+        shiftType: meta.shiftType,
+        preparedBy: meta.preparedBy,
+        totalLots: lots.length,
+        mamOnhold: summary.mamOnhold.length,
+        lineIssues: lineIssues.length,
+        incomingTotal: summary.incomingTotal,
+        engProcessed: Number(throughputData[1]) || 0,
+        engEnd: Number(throughputData[2]) || 0,
+        mamEnd: Number(throughputData[5]) || 0
+      };
+    }
+
+    function snapshotLabel(snapshot) {
+      return `${formatReportDate(snapshot.date)} | Shift ${snapshot.shift} | ${snapshot.shiftType}`;
+    }
+
+    function sortedShiftHistory() {
+      return readShiftHistory().sort((a, b) => {
+        const dateCompare = String(a.date).localeCompare(String(b.date));
+        if (dateCompare !== 0) return dateCompare;
+        return String(a.savedAt).localeCompare(String(b.savedAt));
+      });
+    }
+
+    function buildEmailBody() {
+      const meta = getReportMeta();
+      const lotLines = lots.map(item => `- ${item.area}: ${item.lot} | ${item.design} | ${item.step} | ${item.issue}${item.pic && item.pic !== '-' ? ` | PIC: ${item.pic}` : ''}`).join('\n') || '- NA';
+      const lineLines = lineIssues.map(item => `- ${item.lot} | ${item.machine} | ${item.problem} | ${item.solution}`).join('\n') || '- NA';
+      const locationLines = locations.map(item => `- ${item.name}: ${item.value}`).join('\n') || '- NA';
+      const movementLines = [
+        `- ENGINEERING INSPECT: start ${throughputData[0]}, process/dispose ${throughputData[1]}, end ${throughputData[2]}`,
+        `- MAM QDR On hold: start ${throughputData[3]}, process/dispose ${throughputData[4]}, end ${throughputData[5]}`
+      ].join('\n');
+
+      return `Micron Confidential\n\nHi all,\nPlease refer below report from shift ${meta.shift}.\n\nPost E Shift Report\nDate: ${formatReportDate(meta.date)}\nShift: ${meta.shift} (${meta.shiftType})\nPrepared by: ${meta.preparedBy}\n\nSummary\n${buildSummaryText()}\n\nMSO / MAM Lot Details\n${lotLines}\n\nLine Issues\n${lineLines}\n\nLot Movement\n${movementLines}\n\nLot Location at End of Shift\n${locationLines}\n\nThanks & regards,\n${meta.preparedBy}`;
+    }
+
+    function updateGeneratedText() {
+      const meta = getReportMeta();
+      const subject = `Re: Post E QDR - Shift ${meta.shift} - ${formatReportDate(meta.date)} (${meta.shiftType})`;
+      document.getElementById('emailSubjectInput').value = subject;
+      document.getElementById('emailBodyInput').value = buildEmailBody();
+      document.getElementById('summaryText').textContent = buildSummaryText();
+      updateShiftDisplay();
+    }
+
+    function renderLots(filter = 'all', query = '') {
+      const q = query.trim().toLowerCase();
+      const filtered = lots.filter(item => {
+        const matchesFilter = filter === 'all' || item.type === filter;
+        const text = `${item.area} ${item.lot} ${item.design} ${item.step} ${item.pic} ${item.issue}`.toLowerCase();
+        return matchesFilter && (!q || text.includes(q));
+      });
+      lotList.innerHTML = filtered.length ? filtered.map((item, index) => `
+        <button id="${toTargetId('lot', item.lot, index)}" data-search-key="${escapeHtml(`${item.area} ${item.lot} ${item.design} ${item.step} ${item.pic} ${item.issue}`)}" class="interactive-row w-full rounded-[20px] border border-white/80 bg-white/62 p-4 text-left shadow-sm fade-up" style="animation-delay:${index * .04}s">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="rounded-full ${item.type === 'onhold' ? 'bg-blue-100 text-blue-800' : 'bg-cyan-100 text-cyan-800'} px-3 py-1 text-xs font-extrabold">${item.area}</span>
+                <span class="text-xs font-bold text-slate-400">${item.step}</span>
+              </div>
+              <p class="mt-3 text-lg font-extrabold tracking-tight">${escapeHtml(item.lot)}</p>
+              <p class="mt-1 line-clamp-2 text-sm leading-6 text-slate-500">${escapeHtml(item.issue)}</p>
+            </div>
+            <div class="shrink-0 rounded-2xl bg-sky-50 px-4 py-3 text-right">
+              <p class="text-xs font-bold text-slate-400">Design</p>
+              <p class="text-lg font-extrabold text-sky-800">${escapeHtml(item.design)}</p>
+              <p class="text-xs font-bold text-slate-400">${escapeHtml(item.pic)}</p>
+            </div>
+          </div>
+        </button>
+      `).join('') : `<div class="rounded-[20px] bg-white/60 p-5 text-sm font-semibold text-slate-500">No matching lots found.</div>`;
+    }
+
+    function renderLineIssues(query = '') {
+      const q = query.trim().toLowerCase();
+      const filtered = lineIssues.filter(item => !q || `${item.lot} ${item.machine} ${item.problem} ${item.solution}`.toLowerCase().includes(q));
+      lineIssueList.innerHTML = filtered.length ? filtered.map((item, index) => `
+        <div id="${toTargetId('line', item.lot, index)}" data-search-key="${escapeHtml(`${item.lot} ${item.machine} ${item.problem} ${item.solution}`)}" class="interactive-row rounded-[20px] border border-white/80 bg-white/64 p-4 shadow-sm fade-up" style="animation-delay:${index * .05}s">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p class="text-sm font-extrabold text-ink">${escapeHtml(item.lot)}</p>
+              <p class="mt-1 text-xs font-bold uppercase tracking-[.14em] text-sky-600">${escapeHtml(item.machine)}</p>
+            </div>
+            <div class="sm:text-right">
+              <p class="text-sm font-bold text-slate-700">${escapeHtml(item.problem)}</p>
+              <p class="mt-1 text-sm text-slate-500">${escapeHtml(item.solution)}</p>
+            </div>
+          </div>
+        </div>
+      `).join('') : `<div class="rounded-[20px] bg-white/60 p-5 text-sm font-semibold text-slate-500">No matching line issues found.</div>`;
+    }
+
+    function renderLocations() {
+      const max = Math.max(...locations.map(item => Number(item.value) || 0), 1);
+      locationList.innerHTML = locations.map((item, index) => `
+        <div id="${toTargetId('location', item.name, index)}" data-search-key="${escapeHtml(`${item.name} ${item.value} incoming qdr location`)}" class="rounded-[20px] bg-white/66 p-4 shadow-sm fade-up" style="animation-delay:${index * .05}s">
+          <div class="mb-3 flex items-center justify-between">
+            <p class="text-sm font-extrabold">${escapeHtml(item.name)}</p>
+            <p class="text-xl font-extrabold text-sky-700">${escapeHtml(item.value)}</p>
+          </div>
+          <div class="h-3 overflow-hidden rounded-full bg-sky-100">
+            <div class="h-full rounded-full bg-gradient-to-r from-sky-400 to-blue-700" style="width:${((Number(item.value) || 0) / max) * 100}%"></div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function updateKpis(forceRoll = false) {
+      const incomingTotal = locations.reduce((sum, item) => sum + (Number(item.value) || 0), 0);
+      const mamOnholdCount = lots.filter(item => item.type === 'onhold' && item.area.toLowerCase().includes('mam')).length;
+      setRollingNumber('totalLotsKpi', lots.length, forceRoll);
+      setRollingNumber('mamOnholdKpi', mamOnholdCount, forceRoll);
+      setRollingNumber('lineIssuesKpi', lineIssues.length, forceRoll);
+      setRollingNumber('incomingKpi', incomingTotal, forceRoll);
+      updateMeter('totalLotsMeter', Math.min(100, lots.length * 10));
+      updateMeter('mamOnholdMeter', Math.min(100, mamOnholdCount * 20));
+      updateMeter('lineIssuesMeter', Math.min(100, lineIssues.length * 20));
+      updateMeter('incomingMeter', Math.min(100, incomingTotal));
+    }
+
+    function setRollingNumber(id, value, forceRoll = false) {
+      const element = document.getElementById(id);
+      if (!element) return;
+      const nextValue = String(value);
+      const shouldRoll = forceRoll || element.dataset.rolled !== 'true';
+      if (element.dataset.value === nextValue && !shouldRoll) return;
+      element.dataset.value = nextValue;
+      element.setAttribute('aria-label', nextValue);
+      element.classList.add('digit-counter');
+      element.innerHTML = nextValue.split('').map((char, index) => {
+        if (!/\d/.test(char)) return `<span>${escapeHtml(char)}</span>`;
+        const digit = Number(char);
+        const digits = Array.from({ length: 20 }, (_, item) => `<span>${item % 10}</span>`).join('');
+        return `<span class="digit-window"><span class="digit-strip" data-target-digit="${10 + digit}" style="--digit:0; --delay:${index * 80}ms">${digits}</span></span>`;
+      }).join('');
+      element.classList.remove('roll-pop');
+      void element.offsetWidth;
+      element.classList.add('roll-pop');
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          element.querySelectorAll('.digit-strip').forEach(strip => {
+            strip.style.setProperty('--digit', strip.dataset.targetDigit || '0');
+          });
+          element.dataset.rolled = 'true';
+        });
+      });
+    }
+
+    function updateMeter(id, value) {
+      const meter = document.getElementById(id);
+      if (!meter) return;
+      meter.style.setProperty('--meter', `${value}%`);
+      meter.style.animation = 'none';
+      void meter.offsetWidth;
+      meter.style.animation = '';
+    }
+
+    function designCounts() {
+      const counts = lots.reduce((map, item) => {
+        const key = item.design || 'NA';
+        map[key] = (map[key] || 0) + 1;
+        return map;
+      }, {});
+      return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    }
+
+    function trendLabels(history) {
+      return history.map(item => {
+        const date = item.date ? new Date(`${item.date}T00:00:00`) : null;
+        const day = date && !Number.isNaN(date) ? date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'NA';
+        return `${day} S${item.shift}`;
+      });
+    }
+
+    function updateTrendChart() {
+      if (!trendChart) return;
+      const history = sortedShiftHistory().slice(-12);
+      trendChart.data.labels = trendLabels(history);
+      trendChart.data.datasets[0].data = history.map(item => item.incomingTotal);
+      trendChart.data.datasets[1].data = history.map(item => item.engProcessed);
+      trendChart.data.datasets[2].data = history.map(item => item.mamOnhold);
+      trendChart.data.datasets[3].data = history.map(item => item.lineIssues);
+      trendChart.update();
+    }
+
+    function renderShiftHistory() {
+      const history = sortedShiftHistory();
+      if (historyCount) historyCount.textContent = `${history.length} saved`;
+      const latest = history[history.length - 1];
+      if (trendSavedMini) trendSavedMini.textContent = history.length;
+      if (trendIncomingMini) trendIncomingMini.textContent = latest?.incomingTotal ?? 0;
+      if (trendEngMini) trendEngMini.textContent = latest?.engProcessed ?? 0;
+      if (trendIssuesMini) trendIssuesMini.textContent = latest?.lineIssues ?? 0;
+      if (latestSnapshotLabel) {
+        latestSnapshotLabel.textContent = latest ? `Latest: ${snapshotLabel(latest)}` : 'No saved shifts yet';
+      }
+      if (historyList) {
+        historyList.innerHTML = history.length ? history.slice().reverse().map(item => `
+          <div class="history-row rounded-[18px] p-3">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-sm font-extrabold text-ink">${escapeHtml(snapshotLabel(item))}</p>
+                <p class="mt-1 text-xs font-semibold text-slate-400">Saved ${escapeHtml(new Date(item.savedAt).toLocaleString())}</p>
+              </div>
+              <span class="rounded-full bg-white px-3 py-1 text-xs font-bold text-sky-700">${escapeHtml(item.preparedBy)}</span>
+            </div>
+            <div class="mt-3 grid grid-cols-2 gap-2 text-xs font-bold text-slate-500">
+              <span>Incoming: <strong class="text-slate-900">${escapeHtml(item.incomingTotal)}</strong></span>
+              <span>Eng Proc: <strong class="text-slate-900">${escapeHtml(item.engProcessed)}</strong></span>
+              <span>MAM Hold: <strong class="text-slate-900">${escapeHtml(item.mamOnhold)}</strong></span>
+              <span>Issues: <strong class="text-slate-900">${escapeHtml(item.lineIssues)}</strong></span>
+            </div>
+          </div>
+        `).join('') : `<div class="rounded-[18px] bg-white/60 p-4 text-sm font-semibold text-slate-500">Save a shift snapshot to start monitoring trend movement.</div>`;
+      }
+      updateTrendChart();
+    }
+
+    async function captureShiftSnapshot() {
+      const next = currentShiftSnapshot();
+      const history = readShiftHistory().filter(item => item.id !== next.id);
+      history.push(next);
+      const trimmed = history
+        .sort((a, b) => String(a.savedAt).localeCompare(String(b.savedAt)))
+        .slice(-24);
+      if (await writeShiftHistory(trimmed)) {
+        renderShiftHistory();
+        showToast(`Saved Shift ${next.shift} snapshot ${backendHistoryReady ? 'to shared database' : 'locally'}`);
+      }
+    }
+
+    function refreshCharts() {
+      if (throughputChart) {
+        throughputChart.data.datasets[0].data = throughputData;
+        throughputChart.update();
+      }
+      if (locationChart) {
+        locationChart.data.labels = locations.map(item => item.name);
+        locationChart.data.datasets[0].data = locations.map(item => Number(item.value) || 0);
+        locationChart.update();
+      }
+      if (designChart) {
+        const counts = designCounts();
+        designChart.data.labels = counts.map(item => item[0]);
+        designChart.data.datasets[0].data = counts.map(item => item[1]);
+        designChart.update();
+      }
+      updateTrendChart();
+    }
+
+    function refreshDashboard() {
+      updateSearch();
+      renderLocations();
+      updateKpis();
+      refreshCharts();
+      updateGeneratedText();
+    }
+
+    function setSearchStatus(text = '', visible = false) {
+      if (!searchStatus) return;
+      searchStatus.textContent = text;
+      searchStatus.classList.toggle('visible', visible && Boolean(text));
+    }
+
+    function setLotFilter(filter) {
+      document.querySelectorAll('.tab').forEach(item => {
+        item.classList.toggle('active', item.dataset.filter === filter);
+      });
+      renderLots(filter, searchInput.value);
+    }
+
+    function updateSearch() {
+      const activeFilter = document.querySelector('.tab.active')?.dataset.filter || 'all';
+      renderLots(activeFilter, searchInput.value);
+      renderLineIssues(searchInput.value);
+      setSearchStatus(searchInput.value.trim() ? 'Press Enter' : '', Boolean(searchInput.value.trim()));
+    }
+
+    function sectionKeywords(id) {
+      const keywords = {
+        overview: 'overview dashboard report health kpi total lots mam onhold line issues incoming lots lot throughput engineering inspect mam qdr micron confidential',
+        trends: 'trend trends history previous shift snapshot monitor chart incoming engineering processed mam onhold line issues',
+        compose: 'email data entry passdown subject recipient copy outlook compose generated summary shift date prepared by lot movement add lot add line issue',
+        lots: 'lot flow mso mam onhold release design step pic substrate chips dent ship to test',
+        issues: 'issues line issue machine problem solution action radar urgent holds data matrix mark alignment',
+        locations: 'locations qdr incoming end of shift location summary p01 incoming lot location'
+      };
+      return keywords[id] || '';
+    }
+
+    function buildSearchTargets() {
+      const sections = ['overview', 'trends', 'compose', 'lots', 'issues', 'locations']
+        .map(id => {
+          const element = document.getElementById(id);
+          return element ? {
+            element,
+            label: id.charAt(0).toUpperCase() + id.slice(1),
+            text: `${element.textContent} ${sectionKeywords(id)}`
+          } : null;
+        })
+        .filter(Boolean);
+
+      const records = Array.from(document.querySelectorAll('[data-search-key]')).map(element => ({
+        element,
+        label: element.querySelector('p, h2, h3')?.textContent?.trim() || 'Match',
+        text: `${element.dataset.searchKey || ''} ${element.textContent || ''}`
+      }));
+
+      return [...records, ...sections];
+    }
+
+    function findBestSearchMatch(query) {
+      const normalizedQuery = normalizeSearchText(query);
+      if (!normalizedQuery) return null;
+      const terms = normalizedQuery.split(' ').filter(Boolean);
+
+      return buildSearchTargets()
+        .map(target => {
+          const text = normalizeSearchText(target.text);
+          const exactIndex = text.indexOf(normalizedQuery);
+          const matchedTerms = terms.filter(term => text.includes(term)).length;
+          if (exactIndex === -1 && matchedTerms === 0) return null;
+          const score = (exactIndex >= 0 ? 100 : 0) + (matchedTerms / terms.length) * 60 - Math.max(exactIndex, 0) / 1000;
+          return { ...target, score };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.score - a.score)[0] || null;
+    }
+
+    function highlightSearchTarget(element) {
+      element.classList.remove('search-target-focus');
+      void element.offsetWidth;
+      element.classList.add('search-target-focus');
+      window.setTimeout(() => element.classList.remove('search-target-focus'), 1600);
+    }
+
+    function setActiveNavForElement(element) {
+      const section = element.closest('section[id]');
+      if (!section) return;
+      const link = document.querySelector(`.top-nav-link[href="#${section.id}"]`);
+      if (link) setActiveNav(link);
+    }
+
+    function scrollToElement(element) {
+      if (!element) return;
+      const navHeight = document.querySelector('.app-nav')?.offsetHeight || 0;
+      const top = element.getBoundingClientRect().top + window.scrollY - navHeight - 22;
+      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      window.setTimeout(() => highlightSearchTarget(element), 420);
+      setActiveNavForElement(element);
+    }
+
+    function runDashboardSearch() {
+      const query = searchInput.value.trim();
+      if (!query) {
+        setSearchStatus('Type to search', true);
+        searchInput.focus();
+        return;
+      }
+
+      setLotFilter('all');
+      renderLineIssues(query);
+      const match = findBestSearchMatch(query);
+      if (!match) {
+        setSearchStatus('No match', true);
+        showToast('No dashboard match found');
+        return;
+      }
+
+      setSearchStatus(match.label, true);
+      scrollToElement(match.element);
+    }
+
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        setLotFilter(tab.dataset.filter);
+      });
+    });
+
+    searchInput.addEventListener('input', updateSearch);
+    searchInput.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        runDashboardSearch();
+      }
+    });
+    searchSubmit.addEventListener('click', runDashboardSearch);
+
+    function scrollToSection(sectionId) {
+      const target = document.getElementById(sectionId);
+      if (!target) return;
+      const navHeight = document.querySelector('.app-nav')?.offsetHeight || 0;
+      const extraGap = 18;
+      const top = target.getBoundingClientRect().top + window.scrollY - navHeight - extraGap;
+      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    }
+
+    function setActiveNav(link) {
+      document.querySelectorAll('.top-nav-link').forEach(item => item.classList.remove('active'));
+      if (link) link.classList.add('active');
+    }
+
+    function playNavFeedback(link, event) {
+      if (!link) return;
+      const rect = link.getBoundingClientRect();
+      const x = event ? event.clientX - rect.left : rect.width / 2;
+      const y = event ? event.clientY - rect.top : rect.height / 2;
+      link.style.setProperty('--ripple-x', `${x}px`);
+      link.style.setProperty('--ripple-y', `${y}px`);
+      link.classList.remove('nav-ripple');
+      void link.offsetWidth;
+      link.classList.add('nav-ripple');
+      window.setTimeout(() => link.classList.remove('nav-ripple'), 680);
+    }
+
+    document.querySelectorAll('[data-scroll]').forEach(button => {
+      button.addEventListener('click', () => scrollToSection(button.dataset.scroll));
+    });
+
+    document.querySelectorAll('.top-nav-link').forEach(link => {
+      link.addEventListener('click', event => {
+        event.preventDefault();
+        const sectionId = link.getAttribute('href')?.replace('#', '');
+        setActiveNav(link);
+        playNavFeedback(link, event);
+        scrollToSection(sectionId);
+      });
+    });
+
+    let navTicking = false;
+    function syncNavCompact() {
+      document.body.classList.toggle('nav-compact', window.scrollY > 48);
+      navTicking = false;
+    }
+
+    window.addEventListener('scroll', () => {
+      if (navTicking) return;
+      navTicking = true;
+      requestAnimationFrame(syncNavCompact);
+    }, { passive: true });
+    syncNavCompact();
+
+    const navSections = Array.from(document.querySelectorAll('.top-nav-link'))
+      .map(link => ({ link, target: document.getElementById(link.getAttribute('href')?.replace('#', '')) }))
+      .filter(item => item.target);
+
+    const navObserver = new IntersectionObserver(entries => {
+      const visible = entries
+        .filter(entry => entry.isIntersecting)
+        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (!visible) return;
+      const match = navSections.find(item => item.target === visible.target);
+      if (match) setActiveNav(match.link);
+    }, {
+      root: null,
+      threshold: [0.18, 0.32, 0.5],
+      rootMargin: '-18% 0px -62% 0px'
+    });
+
+    navSections.forEach(item => navObserver.observe(item.target));
+
+    let kpiWasVisible = false;
+    const kpiObserverTarget = document.querySelector('.overview-hero');
+    if (kpiObserverTarget) {
+      const kpiObserver = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting && !kpiWasVisible) {
+            updateKpis(true);
+            kpiWasVisible = true;
+          }
+          if (!entry.isIntersecting) {
+            kpiWasVisible = false;
+          }
+        });
+      }, {
+        root: null,
+        threshold: 0.38,
+        rootMargin: '-8% 0px -12% 0px'
+      });
+      kpiObserver.observe(kpiObserverTarget);
+    }
+
+    function syncPreparedByWithShift() {
+      const preparedByInput = document.getElementById('preparedByInput');
+      const shift = document.getElementById('shiftInput')?.value || 'B';
+      if (!preparedByInput) return;
+      if (!preparedByInput.value.trim() || /^Shift [A-D]$/i.test(preparedByInput.value.trim())) {
+        preparedByInput.value = `Shift ${shift.toUpperCase()}`;
+      }
+    }
+
+    document.getElementById('shiftInput').addEventListener('change', () => {
+      syncPreparedByWithShift();
+      updateGeneratedText();
+    });
+
+    ['dateInput', 'shiftTypeInput', 'preparedByInput'].forEach(id => {
+      document.getElementById(id).addEventListener('input', updateGeneratedText);
+      document.getElementById(id).addEventListener('change', updateGeneratedText);
+    });
+
+    document.getElementById('addLotBtn').addEventListener('click', () => {
+      const type = document.getElementById('lotTypeInput').value;
+      const area = document.getElementById('lotAreaInput').value.trim() || (type === 'onhold' ? 'MAM Onhold' : 'MSO Release');
+      const lot = document.getElementById('lotIdInput').value.trim();
+      const design = document.getElementById('designInput').value.trim() || 'NA';
+      const step = document.getElementById('stepInput').value.trim() || 'NA';
+      const pic = document.getElementById('picInput').value.trim() || '-';
+      const issue = document.getElementById('issueInput').value.trim() || 'NA';
+      if (!lot) {
+        showToast('Lot ID is required');
+        return;
+      }
+      lots.unshift({ type, area, lot, design, step, pic, issue });
+      ['lotAreaInput', 'lotIdInput', 'designInput', 'stepInput', 'picInput', 'issueInput'].forEach(id => document.getElementById(id).value = '');
+      refreshDashboard();
+      showToast('Lot added to dashboard');
+    });
+
+    document.getElementById('addLineBtn').addEventListener('click', () => {
+      const lot = document.getElementById('lineLotInput').value.trim();
+      const machine = document.getElementById('machineInput').value.trim();
+      const problem = document.getElementById('problemInput').value.trim();
+      const solution = document.getElementById('solutionInput').value.trim();
+      if (!lot && !machine && !problem) {
+        showToast('Line issue needs lot, machine, or problem');
+        return;
+      }
+      lineIssues.unshift({
+        lot: lot || 'NA',
+        machine: machine || 'NA',
+        problem: problem || 'NA',
+        solution: solution || 'NA'
+      });
+      ['lineLotInput', 'machineInput', 'problemInput', 'solutionInput'].forEach(id => document.getElementById(id).value = '');
+      refreshDashboard();
+      showToast('Line issue added');
+    });
+
+    document.getElementById('updateNumbersBtn').addEventListener('click', () => {
+      throughputData = [
+        Number(document.getElementById('engStartInput').value) || 0,
+        Number(document.getElementById('engProcessInput').value) || 0,
+        Number(document.getElementById('engEndInput').value) || 0,
+        Number(document.getElementById('mamStartInput').value) || 0,
+        Number(document.getElementById('mamProcessInput').value) || 0,
+        Number(document.getElementById('mamEndInput').value) || 0
+      ];
+      locations = [
+        { name: 'P01-QDR-INCOMING-01', value: Number(document.getElementById('loc01Input').value) || 0 },
+        { name: 'P01-QDR-INCOMING-02', value: Number(document.getElementById('loc02Input').value) || 0 },
+        { name: 'P01-QDR-INCOMING-03', value: Number(document.getElementById('loc03Input').value) || 0 }
+      ];
+      refreshDashboard();
+      showToast('Dashboard numbers updated');
+    });
+
+    document.getElementById('captureShiftBtn').addEventListener('click', async () => {
+      updateGeneratedText();
+      await captureShiftSnapshot();
+    });
+
+    document.getElementById('clearTrendBtn').addEventListener('click', async () => {
+      if (!readShiftHistory().length) {
+        showToast('No trend history to reset');
+        return;
+      }
+      if (!confirm(`Reset saved shift trend history ${backendHistoryReady ? 'from the shared database' : 'for this browser'}?`)) return;
+      if (await writeShiftHistory([])) {
+        renderShiftHistory();
+        showToast('Trend history reset');
+      }
+    });
+
+    toggleTrendBtn.addEventListener('click', () => {
+      const trends = document.getElementById('trends');
+      const minimized = !trends.classList.contains('is-minimized');
+      trends.classList.toggle('is-minimized', minimized);
+      toggleTrendBtn.textContent = minimized ? 'Expand' : 'Minimize';
+      toggleTrendBtn.setAttribute('aria-expanded', String(!minimized));
+      if (!minimized) window.setTimeout(() => trendChart?.resize(), 340);
+    });
+
+    document.getElementById('copyBtn').addEventListener('click', async () => {
+      const text = document.getElementById('summaryText').textContent.trim();
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('Copied passdown summary');
+      } catch {
+        showToast('Copy unavailable in this browser');
+      }
+    });
+
+    function excelCell(value) {
+      return `<td>${escapeHtml(value)}</td>`;
+    }
+
+    function excelRows(items, columns) {
+      return items.map(item => `<tr>${columns.map(column => excelCell(item[column.key])).join('')}</tr>`).join('');
+    }
+
+    function buildExcelWorkbookHtml() {
+      updateGeneratedText();
+      const meta = getReportMeta();
+      const summary = summarizeData();
+      const movementRows = [
+        { area: 'ENGINEERING INSPECT', start: throughputData[0], process: throughputData[1], end: throughputData[2] },
+        { area: 'MAM QDR On hold', start: throughputData[3], process: throughputData[4], end: throughputData[5] }
+      ];
+      const css = `
+        <style>
+          body { font-family: "Source Sans 3", "Segoe UI", Arial, sans-serif; color: #0f172a; }
+          h1 { color: #075985; }
+          h2 { margin-top: 22px; color: #0f172a; }
+          table { border-collapse: collapse; width: 100%; margin-bottom: 16px; }
+          th { background: #dff3ff; color: #0f172a; font-weight: 700; }
+          th, td { border: 1px solid #9cc8df; padding: 8px; vertical-align: top; }
+          .summary { background: #f0f9ff; border: 1px solid #9cc8df; padding: 12px; }
+        </style>`;
+      return `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8">${css}</head>
+<body>
+  <h1>Post E Shift Report</h1>
+  <table>
+    <tr><th>Field</th><th>Value</th></tr>
+    <tr><td>Date</td><td>${escapeHtml(formatReportDate(meta.date))}</td></tr>
+    <tr><td>Shift</td><td>${escapeHtml(meta.shift)}</td></tr>
+    <tr><td>Shift Type</td><td>${escapeHtml(meta.shiftType)}</td></tr>
+    <tr><td>Prepared By</td><td>${escapeHtml(meta.preparedBy)}</td></tr>
+    <tr><td>Total Lots</td><td>${lots.length}</td></tr>
+    <tr><td>MAM Onhold</td><td>${summary.mamOnhold.length}</td></tr>
+    <tr><td>Line Issues</td><td>${lineIssues.length}</td></tr>
+    <tr><td>Incoming Lots</td><td>${summary.incomingTotal}</td></tr>
+  </table>
+  <h2>Summary</h2>
+  <div class="summary">${escapeHtml(buildSummaryText())}</div>
+  <h2>MSO / MAM Lot Details</h2>
+  <table>
+    <tr><th>Area</th><th>Type</th><th>Lot ID</th><th>Design ID</th><th>Step / Location</th><th>PIC</th><th>Issue</th></tr>
+    ${excelRows(lots, [
+      { key: 'area' }, { key: 'type' }, { key: 'lot' }, { key: 'design' }, { key: 'step' }, { key: 'pic' }, { key: 'issue' }
+    ])}
+  </table>
+  <h2>Line Issues</h2>
+  <table>
+    <tr><th>Lot ID</th><th>Machine ID</th><th>Problem</th><th>Solution</th></tr>
+    ${excelRows(lineIssues, [
+      { key: 'lot' }, { key: 'machine' }, { key: 'problem' }, { key: 'solution' }
+    ])}
+  </table>
+  <h2>Lot Movement</h2>
+  <table>
+    <tr><th>Area</th><th>Lots at Start of Shift</th><th>Lot Processes / Dispose</th><th>Lots at End of Shift</th></tr>
+    ${excelRows(movementRows, [
+      { key: 'area' }, { key: 'start' }, { key: 'process' }, { key: 'end' }
+    ])}
+  </table>
+  <h2>Lot Location at End of Shift</h2>
+  <table>
+    <tr><th>Lot Location</th><th>Lots at End of Shift</th></tr>
+    ${locations.map(item => `<tr>${excelCell(item.name)}${excelCell(item.value)}</tr>`).join('')}
+  </table>
+</body>
+</html>`;
+    }
+
+    function excelFileName() {
+      const meta = getReportMeta();
+      return `Post-E-QDR-Shift-${meta.shift}-${formatReportDate(meta.date).replace(/ /g, '-')}.xls`;
+    }
+
+    function downloadExcelWorkbook() {
+      const blob = new Blob([buildExcelWorkbookHtml()], { type: 'application/vnd.ms-excel;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = excelFileName();
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function toggleExportMenu(forceOpen) {
+      const shell = document.getElementById('exportShell');
+      const button = document.getElementById('exportBtn');
+      const open = typeof forceOpen === 'boolean' ? forceOpen : !shell.classList.contains('open');
+      shell.classList.toggle('open', open);
+      button.setAttribute('aria-expanded', String(open));
+    }
+
+    document.getElementById('exportBtn').addEventListener('click', event => {
+      event.stopPropagation();
+      toggleExportMenu();
+    });
+
+    document.querySelectorAll('[data-export-mode]').forEach(button => {
+      button.addEventListener('click', () => {
+        const mode = button.dataset.exportMode;
+        downloadExcelWorkbook();
+        toggleExportMenu(false);
+        if (mode === 'web') {
+          window.open('https://www.office.com/launch/excel', '_blank', 'noopener');
+          showToast('Excel file downloaded. Opening Excel web.');
+        } else {
+          showToast('Excel file downloaded for desktop.');
+        }
+      });
+    });
+
+    document.addEventListener('click', event => {
+      if (!document.getElementById('exportShell')?.contains(event.target)) toggleExportMenu(false);
+    });
+
+    document.getElementById('refreshEmailBtn').addEventListener('click', () => {
+      updateGeneratedText();
+      showToast('Email refreshed');
+    });
+
+    function normalizeRecipients(value) {
+      return String(value || '').split(/[;,]+/).map(item => item.trim()).filter(Boolean).join(',');
+    }
+
+    function openOutlookCompose() {
+      updateGeneratedText();
+      const to = normalizeRecipients(document.getElementById('emailToInput').value);
+      const cc = normalizeRecipients(document.getElementById('emailCcInput').value);
+      const subject = document.getElementById('emailSubjectInput').value;
+      const body = document.getElementById('emailBodyInput').value;
+      const params = [
+        cc ? `cc=${encodeURIComponent(cc)}` : '',
+        `subject=${encodeURIComponent(subject)}`,
+        `body=${encodeURIComponent(body)}`
+      ].filter(Boolean).join('&');
+      const encodedTo = to.split(',').map(item => encodeURIComponent(item)).join(',');
+      window.location.href = `mailto:${encodedTo}?${params}`;
+      showToast('Opening Outlook compose');
+    }
+
+    function downloadEml() {
+      updateGeneratedText();
+      const to = normalizeRecipients(document.getElementById('emailToInput').value);
+      const cc = normalizeRecipients(document.getElementById('emailCcInput').value);
+      const subject = document.getElementById('emailSubjectInput').value;
+      const body = document.getElementById('emailBodyInput').value;
+      const eml = [
+        `To: ${to}`,
+        cc ? `Cc: ${cc}` : '',
+        `Subject: ${subject}`,
+        'X-Unsent: 1',
+        'Content-Type: text/plain; charset=utf-8',
+        '',
+        body
+      ].filter(line => line !== '').join('\r\n');
+      const blob = new Blob([eml], { type: 'message/rfc822' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'Post-E-QDR-Outlook-Draft.eml';
+      link.click();
+      URL.revokeObjectURL(url);
+      showToast('Outlook draft downloaded');
+    }
+
+    document.getElementById('sendOutlookBtn').addEventListener('click', openOutlookCompose);
+    document.getElementById('topOutlookBtn').addEventListener('click', openOutlookCompose);
+    document.getElementById('downloadEmlBtn').addEventListener('click', downloadEml);
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.remove('opacity-0', 'translate-y-5');
+      setTimeout(() => toast.classList.add('opacity-0', 'translate-y-5'), 1900);
+    }
+
+    function animateCounters() {
+      document.querySelectorAll('[data-count]').forEach(el => {
+        if (el.id && el.id.endsWith('Kpi')) return;
+        const target = Number(el.dataset.count);
+        let current = 0;
+        const steps = 42;
+        const increment = target / steps;
+        const timer = setInterval(() => {
+          current += increment;
+          if (current >= target) {
+            el.textContent = target;
+            clearInterval(timer);
+          } else {
+            el.textContent = Math.floor(current);
+          }
+        }, 22);
+      });
+    }
+
+    function chartOptions() {
+      return {
+        responsive: true,
+        plugins: { legend: { display: false }, tooltip: { backgroundColor: '#0f172a', padding: 12, cornerRadius: 12 } },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: '#64748b', font: { weight: 700 } } },
+          y: { beginAtZero: true, grid: { color: 'rgba(148, 163, 184, .18)' }, ticks: { color: '#94a3b8', precision: 0 } }
+        }
+      };
+    }
+
+    function createCharts() {
+      throughputChart = new Chart(document.getElementById('throughputChart'), {
+        type: 'bar',
+        data: {
+          labels: ['Eng Start', 'Eng Process', 'Eng End', 'MAM Start', 'MAM Process', 'MAM End'],
+          datasets: [{
+            data: throughputData,
+            borderRadius: 14,
+            backgroundColor: ['#93c5fd', '#0ea5e9', '#bfdbfe', '#38bdf8', '#bae6fd', '#1769aa']
+          }]
+        },
+        options: chartOptions()
+      });
+
+      locationChart = new Chart(document.getElementById('locationChart'), {
+        type: 'doughnut',
+        data: {
+          labels: locations.map(item => item.name),
+          datasets: [{ data: locations.map(item => item.value), backgroundColor: ['#1769aa', '#38bdf8', '#bae6fd'], borderColor: '#fff', borderWidth: 5, hoverOffset: 8 }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '66%',
+          layout: { padding: 4 },
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { boxWidth: 10, color: '#64748b', font: { weight: 700 } }
+            }
+          }
+        }
+      });
+
+      designChart = new Chart(document.getElementById('designChart'), {
+        type: 'bar',
+        data: {
+          labels: designCounts().map(item => item[0]),
+          datasets: [{ data: designCounts().map(item => item[1]), borderRadius: 16, backgroundColor: ['#1769aa', '#38bdf8', '#bae6fd', '#93c5fd', '#0ea5e9'] }]
+        },
+        options: chartOptions()
+      });
+
+      trendChart = new Chart(document.getElementById('trendChart'), {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            { label: 'Incoming Lots', data: [], borderColor: '#1769aa', backgroundColor: 'rgba(23, 105, 170, .08)', tension: .32, fill: true, borderWidth: 2, pointRadius: 3, pointHoverRadius: 5 },
+            { label: 'Eng Processed', data: [], borderColor: '#0ea5e9', backgroundColor: 'rgba(14, 165, 233, .06)', tension: .32, borderWidth: 2, pointRadius: 3, pointHoverRadius: 5 },
+            { label: 'MAM Onhold', data: [], borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, .06)', tension: .32, borderWidth: 2, pointRadius: 3, pointHoverRadius: 5 },
+            { label: 'Line Issues', data: [], borderColor: '#93c5fd', backgroundColor: 'rgba(147, 197, 253, .06)', tension: .32, borderWidth: 2, pointRadius: 3, pointHoverRadius: 5 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { boxWidth: 9, padding: 10, color: '#64748b', font: { weight: 700, size: 11 } }
+            },
+            tooltip: { backgroundColor: '#0f172a', padding: 12, cornerRadius: 12 }
+          },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: '#64748b', font: { weight: 700 } } },
+            y: { beginAtZero: true, grid: { color: 'rgba(148, 163, 184, .18)' }, ticks: { color: '#94a3b8', precision: 0 } }
+          }
+        }
+      });
+    }
+
+    renderLots();
+    renderLineIssues();
+    renderLocations();
+    animateCounters();
+    createCharts();
+    loadShiftHistory().then(renderShiftHistory);
+    updateKpis(true);
+    updateGeneratedText();
+  </script>
+</body>
+</html>
